@@ -1,0 +1,286 @@
+rules_version = '2';
+// Meu Mercado — regras do Cloud Firestore
+// Princípios:
+//  - Negar por padrão. Nenhuma regra aberta.
+//  - Papéis e permissões vêm de custom claims (request.auth.token) definidas SOMENTE por Cloud Functions/Admin SDK.
+//  - Dados financeiros, estoque, reservas, pedidos e pagamentos são escritos SOMENTE pelo servidor (Admin SDK ignora regras).
+//  - Clientes só leem o que é seu; mercados só leem o que pertence ao seu marketId.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Funções auxiliares ----------
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function role() { return signedIn() && 'role' in request.auth.token ? request.auth.token.role : null; }
+    function isPlatformStaff() { return role() == 'platform_admin' || role() == 'platform_staff'; }
+    function isSuperAdmin() { return role() == 'platform_admin'; }
+    function platformPerm(p) {
+      return isSuperAdmin() ||
+        (role() == 'platform_staff' && 'perms' in request.auth.token && p in request.auth.token.perms);
+    }
+    function isMarketStaff(marketId) {
+      return signedIn() && role() == 'market_staff'
+        && 'marketId' in request.auth.token && request.auth.token.marketId == marketId;
+    }
+    function marketPerm(marketId, p) {
+      return isMarketStaff(marketId) && 'perms' in request.auth.token && p in request.auth.token.perms;
+    }
+    function str(v, max) { return v is string && v.size() > 0 && v.size() <= max; }
+    function onlyKeys(keys) { return request.resource.data.keys().hasOnly(keys); }
+    function unchanged(field) {
+      return (!(field in resource.data) && !(field in request.resource.data))
+        || (field in resource.data && field in request.resource.data && resource.data[field] == request.resource.data[field]);
+    }
+
+    // ---------- Configuração pública da plataforma (somente leitura) ----------
+    match /platform/{doc} {
+      allow read: if true;
+      allow write: if false; // via Cloud Functions (setPlatformConfig)
+    }
+
+    // ---------- Cidades / categorias globais ----------
+    match /cities/{id} {
+      allow read: if true;
+      allow write: if false; // via Cloud Functions (adminUpsertCity)
+    }
+    match /categories/{id} {
+      allow read: if true;
+      allow write: if false; // via Cloud Functions (adminUpsertCategory)
+    }
+    match /categoryRequests/{id} {
+      allow read: if isPlatformStaff() || (signedIn() && resource.data.requestedBy == request.auth.uid);
+      allow create: if signedIn() && role() == 'market_staff' && str(request.resource.data.name, 80)
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.marketId == request.auth.token.marketId
+        && request.resource.data.status == 'pending'
+        && onlyKeys(['name', 'requestedBy', 'marketId', 'status', 'createdAt']);
+      allow update, delete: if false;
+    }
+
+    // ---------- Catálogo global de produtos ----------
+    match /globalProducts/{id} {
+      allow read: if resource.data.active == true || isPlatformStaff();
+      allow write: if false; // via Cloud Functions (adminUpsertGlobalProduct / importações aprovadas)
+    }
+
+    // ---------- Mercados (dados públicos) ----------
+    // Somente mercados 'active' são visíveis ao público; o doc público NÃO contém dados contratuais.
+    match /markets/{marketId} {
+      allow read: if resource.data.status == 'active' || isPlatformStaff() || isMarketStaff(marketId);
+      allow write: if false; // via Cloud Functions (status, comissão, etc.)
+
+      // Configuração operacional editável pelo mercado, validada em função (marketUpdateSettings). Leitura pública do que for público.
+      match /public/{doc} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      // Anúncios (preço/promoção/quantidade alocada)
+      match /listings/{listingId} {
+        allow read: if resource.data.active == true || isPlatformStaff() || isMarketStaff(marketId);
+        // Escritas passam por Cloud Functions (marketUpsertListing) para auditoria e validação atômica de estoque.
+        allow write: if false;
+      }
+
+      // Funcionários do mercado
+      match /staff/{uid} {
+        allow read: if isMarketStaff(marketId) || isPlatformStaff();
+        allow write: if false; // via Cloud Functions (marketInviteStaff / marketSetPermissions)
+      }
+
+      // Importações em lote (rascunhos em revisão)
+      match /imports/{importId} {
+        allow read: if marketPerm(marketId, 'products.import') || isPlatformStaff();
+        allow write: if false; // via Cloud Functions
+        match /rows/{rowId} {
+          allow read: if marketPerm(marketId, 'products.import') || isPlatformStaff();
+          allow write: if false;
+        }
+      }
+
+      // Histórico de alterações de preço/estoque/promoção dos anúncios (gravado pelo servidor)
+      match /listingHistory/{id} {
+        allow read: if marketPerm(marketId, 'products.read') || platformPerm('audit.read');
+        allow write: if false;
+      }
+
+      // Financeiro do mercado
+      match /finance/{doc} {
+        allow read: if marketPerm(marketId, 'finance.read') || platformPerm('finance.read');
+        allow write: if false;
+      }
+      match /payouts/{id} {
+        allow read: if marketPerm(marketId, 'finance.read') || platformPerm('finance.read');
+        allow write: if false;
+      }
+
+      match /notifications/{id} {
+        allow read: if isMarketStaff(marketId);
+        // Marcar como lida é o único campo editável pelo funcionário.
+        allow update: if isMarketStaff(marketId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+        allow create, delete: if false;
+      }
+    }
+
+    // ---------- Usuários (perfil privado) ----------
+    match /users/{uid} {
+      allow read: if isOwner(uid) || platformPerm('users.read');
+      allow create: if isOwner(uid)
+        && onlyKeys(['name', 'phone', 'email', 'createdAt', 'prefs'])
+        && str(request.resource.data.name, 120);
+      // Cliente não pode alterar role/claims — esses campos nem existem aqui.
+      allow update: if isOwner(uid)
+        && onlyKeys(['name', 'phone', 'email', 'createdAt', 'prefs'])
+        && unchanged('createdAt');
+      allow delete: if false;
+
+      match /addresses/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && str(request.resource.data.cep, 9) && str(request.resource.data.street, 160)
+          && str(request.resource.data.number, 20) && str(request.resource.data.city, 80)
+          && request.resource.data.keys().hasOnly(['label','cep','street','number','complement','district','city','uf','lat','lng','isDefault','recipient']);
+      }
+
+      match /lists/{listId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid) && str(request.resource.data.name, 80)
+          && request.resource.data.keys().hasOnly(['name','items','updatedAt','createdAt'])
+          && request.resource.data.items is list && request.resource.data.items.size() <= 200;
+      }
+
+      match /carts/{marketId} {
+        allow read, delete: if isOwner(uid);
+        // Carrinho guarda apenas productId + quantidade; preços nunca são confiáveis (revalidados no servidor).
+        allow create, update: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(['items','updatedAt','coupon'])
+          && request.resource.data.items is list && request.resource.data.items.size() <= 150;
+      }
+
+      match /notifications/{id} {
+        allow read: if isOwner(uid);
+        allow update: if isOwner(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+        allow create, delete: if false;
+      }
+    }
+
+    // ---------- Pedidos (fonte da verdade, escritos só pelo servidor) ----------
+    match /orders/{orderId} {
+      // Cliente dono, equipe do mercado com permissão, ou suporte da plataforma com permissão.
+      allow read: if signedIn() && (
+        resource.data.customerId == request.auth.uid
+        || marketPerm(resource.data.marketId, 'orders.read')
+        || platformPerm('orders.read'));
+      allow write: if false;
+
+      // Chat vinculado ao pedido
+      match /messages/{msgId} {
+        allow read: if signedIn() && (
+          get(/databases/$(database)/documents/orders/$(orderId)).data.customerId == request.auth.uid
+          || marketPerm(get(/databases/$(database)/documents/orders/$(orderId)).data.marketId, 'chat.use')
+          || platformPerm('support.read'));
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['text','senderId','senderRole','createdAt'])
+          && str(request.resource.data.text, 1000)
+          && request.resource.data.senderId == request.auth.uid
+          && (
+            (request.resource.data.senderRole == 'customer'
+              && get(/databases/$(database)/documents/orders/$(orderId)).data.customerId == request.auth.uid)
+            || (request.resource.data.senderRole == 'market'
+              && marketPerm(get(/databases/$(database)/documents/orders/$(orderId)).data.marketId, 'chat.use')));
+        allow update, delete: if false; // histórico imutável
+      }
+
+      // Histórico de estados / eventos — somente leitura
+      match /events/{id} {
+        allow read: if signedIn() && (
+          get(/databases/$(database)/documents/orders/$(orderId)).data.customerId == request.auth.uid
+          || marketPerm(get(/databases/$(database)/documents/orders/$(orderId)).data.marketId, 'orders.read')
+          || platformPerm('orders.read'));
+        allow write: if false;
+      }
+
+      // Código de entrega: visível SOMENTE ao cliente. Entregador/mercado nunca leem.
+      match /secrets/delivery {
+        allow read: if signedIn()
+          && get(/databases/$(database)/documents/orders/$(orderId)).data.customerId == request.auth.uid
+          && get(/databases/$(database)/documents/orders/$(orderId)).data.status in ['out_for_delivery', 'ready_for_dispatch'];
+        allow write: if false;
+      }
+    }
+
+    // ---------- Pagamentos, reservas e livro financeiro: somente servidor ----------
+    match /payments/{id} { allow read: if platformPerm('finance.read'); allow write: if false; }
+    match /reservations/{id} { allow read, write: if false; }
+    match /ledger/{id} { allow read: if platformPerm('finance.read'); allow write: if false; }
+    match /webhookEvents/{id} { allow read, write: if false; }
+    match /idempotency/{id} { allow read, write: if false; }
+
+    // ---------- Avaliações ----------
+    match /reviews/{reviewId} {
+      allow read: if resource.data.hidden != true || platformPerm('reviews.moderate');
+      // Criação/edição via função (valida compra real e preserva versões)
+      allow write: if false;
+      match /versions/{v} { allow read: if platformPerm('reviews.moderate'); allow write: if false; }
+    }
+
+    // ---------- Suporte ----------
+    match /tickets/{ticketId} {
+      allow read: if signedIn() && (resource.data.requesterId == request.auth.uid || platformPerm('support.read'));
+      allow create: if signedIn()
+        && request.resource.data.requesterId == request.auth.uid
+        && str(request.resource.data.subject, 140)
+        && request.resource.data.status == 'open'
+        && request.resource.data.priority == 'normal'
+        && (request.resource.data.requesterRole == 'customer'
+            || (request.resource.data.requesterRole == 'market' && role() == 'market_staff'
+                && request.resource.data.marketId == request.auth.token.marketId))
+        && request.resource.data.keys().hasOnly(['requesterId','requesterRole','marketId','orderId','category','subject','status','priority','createdAt']);
+      allow update, delete: if false; // atualizações via função (supportUpdateTicket)
+      match /messages/{id} {
+        allow read: if signedIn() && (
+          get(/databases/$(database)/documents/tickets/$(ticketId)).data.requesterId == request.auth.uid
+          || platformPerm('support.read'));
+        allow create: if signedIn() && str(request.resource.data.text, 2000)
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.keys().hasOnly(['text','senderId','senderRole','createdAt'])
+          && (get(/databases/$(database)/documents/tickets/$(ticketId)).data.requesterId == request.auth.uid
+              || platformPerm('support.write'));
+        allow update, delete: if false;
+      }
+    }
+
+    // ---------- Dados internos de mercados (comissão, contrato, carteira) — nunca públicos ----------
+    match /marketAdmin/{marketId} {
+      allow read: if platformPerm('markets.read');
+      allow write: if false;
+      match /history/{id} { allow read: if platformPerm('markets.read'); allow write: if false; }
+    }
+
+    // ---------- Substituições de itens faltantes (decisão do cliente via função) ----------
+    match /orders/{orderId}/substitutions/{subId} {
+      allow read: if signedIn() && (
+        get(/databases/$(database)/documents/orders/$(orderId)).data.customerId == request.auth.uid
+        || marketPerm(get(/databases/$(database)/documents/orders/$(orderId)).data.marketId, 'orders.read')
+        || platformPerm('orders.read'));
+      allow write: if false;
+    }
+
+    // ---------- Administração / CRM / auditoria ----------
+    match /prospects/{id} { allow read: if platformPerm('crm.read'); allow write: if false; }
+    match /staff/{uid}   { allow read: if isOwner(uid) || platformPerm('staff.read'); allow write: if false; }
+    match /departments/{id} { allow read: if isPlatformStaff(); allow write: if false; }
+    match /coupons/{id} {
+      allow read: if (resource.data.active == true && resource.data.visibility == 'public')
+        || platformPerm('campaigns.read')
+        || (role() == 'market_staff' && resource.data.marketId == request.auth.token.marketId
+            && 'perms' in request.auth.token && 'promotions.write' in request.auth.token.perms);
+      allow write: if false;
+    }
+    match /auditLogs/{id} { allow read: if platformPerm('audit.read'); allow write: if false; }
+
+    // Negar tudo o que não foi explicitamente liberado.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

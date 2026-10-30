@@ -54,7 +54,7 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) 
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* armazenamento indisponível */ } };
 const cepMask = (v) => { const d = String(v).replace(/\D/g, '').slice(0, 8); return d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d; };
-const CAT_EMOJI = { mercearia: '🥫', cereais: '🌾', 'arroz-e-feijao': '🍚', massas: '🍝', bebidas: '🥤', hortifruti: '🥬', carnes: '🥩', peixes: '🐟', laticinios: '🧀', padaria: '🍞', congelados: '🧊', limpeza: '🧽', higiene: '🧴', bebes: '🍼', 'cesta-basica': '🧺', pet: '🐾' };
+const CAT_EMOJI = { mercearia: '🥫', cereais: '🌾', 'arroz-e-feijao': '🍚', massas: '🍝', 'oleos-e-temperos': '🫒', bebidas: '🥤', hortifruti: '🥬', carnes: '🥩', peixes: '🐟', laticinios: '🧀', padaria: '🍞', congelados: '🧊', 'doces-e-snacks': '🍫', limpeza: '🧽', higiene: '🧴', bebes: '🍼', 'cesta-basica': '🧺', pet: '🐾' };
 const emojiFor = (cat) => cat?.icon || CAT_EMOJI[cat?.id] || '🛒';
 const STATUS = { ...R.ORDER_STATUS, confirmed: 'Pagamento confirmado — aguardando separação', picked: 'Separado', ready_for_dispatch: 'Aguardando expedição', delivered: 'Entregue', completed: 'Concluído', delivery_failed: 'Falha na entrega' };
 const STATUS_TONE = { awaiting_payment: 'o', confirmed: 'b', picking: 'b', picked: 'b', ready_for_dispatch: 'b', out_for_delivery: 'o', delivered: '', completed: 'g', delivery_failed: 'r', cancelled: 'r', refund_processing: 'o', refunded: 'g' };

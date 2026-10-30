@@ -99,31 +99,100 @@ const fmtH = (k, v) => v == null ? '—' : k === 'price' ? brl(v) : k === 'promo
 function openNewListing(mid, s, done) {
   openModal((m) => { const tabs = h('div', { class: 'tabs' }); const body = h('div', { class: 'stack', style: { marginTop: '12px' } }); let tab = 'off';
     const draw = () => { tabs.replaceChildren(...[['off', 'Open Food Facts'], ['global', 'Do catálogo global'], ['local', 'Produto local / combo']].map(([k, t]) => h('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; draw(); } }, t))); body.replaceChildren(tab === 'off' ? offTab() : tab === 'global' ? globalTab() : localTab()); };
+
+    /* ── helpers OFF ── */
     const parseQty = (q) => {
       if (!q) return { size: null, unit: '' };
-      const m = String(q).trim().toLowerCase().replace(',', '.').match(/^([\d.]+)\s*(kg|g|ml|l|un|unidade|unidades)?/);
+      const s = String(q).trim().toLowerCase().replace(',', '.').replace(/\s+/g, '');
+      const m = s.match(/^([\d.]+)\s*(kg|g|ml|l|un|unidade|unidades|litros?|gramas?)?/);
       if (!m) return { size: null, unit: '' };
-      let unit = (m[2] || '').replace(/^unidades?$/, 'un');
-      if (!unit) unit = '';
-      return { size: parseFloat(m[1]) || null, unit };
+      let unit = (m[2] || '');
+      if (/^unidades?$/.test(unit)) unit = 'un';
+      if (/^litros?$/.test(unit)) unit = 'l';
+      if (/^gramas?$/.test(unit)) unit = 'g';
+      return { size: parseFloat(m[1]) || null, unit: unit || '' };
     };
+    const offImg = (p) => p.image_front_url || p.image_url || p.image_front_small_url || p.image_front_thumb_url || null;
+    const offThumb = (p) => p.image_front_thumb_url || p.image_front_small_url || p.image_front_url || p.image_url || null;
+    const offName = (p) => (p.product_name_pt || p.product_name || p.generic_name_pt || p.generic_name || '').trim() || 'Sem nome';
+    const offBrand = (p) => ((p.brands || '').split(',')[0] || '').trim();
+
+    // Mapeia tags/nome da Open Food Facts → id de categoria local (ids estáveis do seed)
+    const OFF_CAT_RULES = [
+      { id: 'arroz-e-feijao', keys: ['rice', 'rices', 'arroz', 'feijao', 'feijão', 'bean', 'beans', 'legumes'] },
+      { id: 'massas', keys: ['pasta', 'pastas', 'noodle', 'macarrao', 'macarrão', 'massa', 'spaghetti', 'lasanha'] },
+      { id: 'cereais', keys: ['cereal', 'cereals', 'granola', 'aveia', 'oat', 'cornflake', 'milho'] },
+      { id: 'bebidas', keys: ['beverage', 'beverages', 'drink', 'soda', 'soft-drink', 'soft-drinks', 'water', 'waters', 'juice', 'juices', 'cerveja', 'beer', 'beers', 'wine', 'wines', 'refrigerante', 'suco', 'agua', 'água', 'energetico', 'café', 'cafe', 'coffee', 'coffees', 'cha', 'chá', 'tea', 'teas', 'refrigerantes'] },
+      { id: 'laticinios', keys: ['dairy', 'milk', 'milks', 'cheese', 'cheeses', 'yogurt', 'yogurts', 'leite', 'queijo', 'iogurte', 'manteiga', 'butter', 'cream'] },
+      { id: 'padaria', keys: ['bread', 'breads', 'bakery', 'pao', 'pão', 'bolo', 'cake', 'biscuit', 'biscuits', 'cookie', 'cookies', 'biscoito'] },
+      { id: 'hortifruti', keys: ['fruit', 'fruits', 'vegetable', 'vegetables', 'fruta', 'legume', 'verdura', 'hortifruti', 'salada'] },
+      { id: 'carnes', keys: ['meat', 'meats', 'beef', 'pork', 'chicken', 'poultry', 'carne', 'frango', 'bovina', 'suina', 'suína'] },
+      { id: 'peixes', keys: ['fish', 'seafood', 'peixe', 'camarao', 'camarão', 'atum', 'sardinha'] },
+      { id: 'congelados', keys: ['frozen', 'congelado', 'congelados', 'sorvete', 'ice-cream'] },
+      { id: 'doces-e-snacks', keys: ['chocolate', 'chocolates', 'candy', 'candies', 'snack', 'snacks', 'doce', 'bala', 'chip', 'chips', 'biscoito-doce', 'sobremesa'] },
+      { id: 'oleos-e-temperos', keys: ['oil', 'oils', 'olive', 'vinegar', 'spice', 'spices', 'seasoning', 'oleo', 'óleo', 'azeite', 'tempero', 'molho', 'sauce', 'sal', 'salt'] },
+      { id: 'limpeza', keys: ['cleaning', 'detergent', 'detergente', 'sabao', 'sabão', 'amaciante', 'desinfetante', 'limpeza'] },
+      { id: 'higiene', keys: ['hygiene', 'cosmetic', 'shampoo', 'soap', 'toothpaste', 'higiene', 'sabonete', 'creme', 'desodorante'] },
+      { id: 'bebes', keys: ['baby', 'infant', 'bebe', 'bebê', 'fralda', 'papinha', 'formula'] },
+      { id: 'pet', keys: ['pet', 'pet-food', 'dog', 'cat', 'racao', 'ração', 'cao', 'cão', 'gato'] },
+      { id: 'mercearia', keys: ['grocery', 'food', 'alimento', 'conserva', 'enlatado', 'molho-de-tomate'] },
+    ];
+    const guessCategory = (p) => {
+      const bag = [
+        ...(p.categories_tags || []),
+        p.categories || '',
+        p.product_name || '',
+        p.product_name_pt || '',
+        p.generic_name || '',
+        p.brands || '',
+      ].join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      for (const rule of OFF_CAT_RULES) {
+        if (rule.keys.some(k => bag.includes(k.normalize('NFD').replace(/[\u0300-\u036f]/g, '')))) {
+          // só retorna se a categoria existir localmente
+          if (S.cats.some(c => c.id === rule.id)) return rule.id;
+        }
+      }
+      // fallback: mercearia se existir
+      if (S.cats.some(c => c.id === 'mercearia')) return 'mercearia';
+      return S.cats[0]?.id || '';
+    };
+
+    const normalizeSearchTerm = (raw) => {
+      let t = String(raw || '').trim().replace(/\s+/g, ' ');
+      // "5 kg" / "5kg" / "5  kg" → mantém legível para a API
+      t = t.replace(/(\d)\s*(kg|g|ml|l)\b/gi, '$1$2');
+      return t;
+    };
+
     const offTab = () => {
-      const q = inp({ ph: 'Nome do produto (ex: Arroz 5kg) ou código de barras EAN' });
+      const q = inp({ ph: 'Ex: Arroz 5kg, Café 3 Corações ou código de barras' });
       const res = h('div', { class: 'stack' });
       const price = inp({ ph: 'Preço R$', mode: 'decimal' });
       const qty = inp({ type: 'number', ph: 'Qtd. alocada', min: 0 });
-      const cat = sel([['', 'Categoria…'], ...S.cats.map(c => [c.id, (c.parentId ? '— ' : '') + c.name])], '');
-      let selected = null;
+      const cat = sel([['', 'Categoria…'], ...S.cats.map(c => [c.id, (c.parentId ? '— ' : '') + (c.emoji || c.icon || '') + ' ' + c.name])], '');
       const formBox = h('div', { class: 'stack' });
+      let selected = null;
+
       const showForm = (p) => {
         selected = p;
         const pq = parseQty(p.quantity);
+        const name = offName(p);
+        const brand = offBrand(p);
+        const img = offImg(p);
+        const thumb = offThumb(p);
+        const guessed = guessCategory(p);
+        if (guessed) cat.value = guessed;
         formBox.replaceChildren(
           h('div', { class: 'card flat row', style: { gap: '12px', alignItems: 'center' } },
-            p.image_front_thumb_url || p.image_url ? h('img', { src: p.image_front_thumb_url || p.image_url, alt: '', style: { width: '56px', height: '56px', objectFit: 'contain', borderRadius: '6px', background: '#f5f5f5' } }) : h('div', { style: { width: '56px', height: '56px', background: '#eee', borderRadius: '6px' } }),
-            h('div', { class: 'grow' }, h('b', null, p.product_name || 'Sem nome'), h('div', { class: 'tiny muted' }, [p.brands, p.quantity, p.code].filter(Boolean).join(' · ')))
+            thumb ? h('img', { src: thumb, alt: '', style: { width: '64px', height: '64px', objectFit: 'contain', borderRadius: '8px', background: '#f5f5f5' }, loading: 'lazy' })
+              : h('div', { style: { width: '64px', height: '64px', background: '#eee', borderRadius: '8px' } }),
+            h('div', { class: 'grow' },
+              h('b', null, name),
+              h('div', { class: 'tiny muted' }, [brand, p.quantity, p.code].filter(Boolean).join(' · ')),
+              (p.categories || '').split(',').slice(0, 2).join(', ') && h('div', { class: 'tiny muted' }, String(p.categories || '').split(',').slice(0, 2).join(', ').trim())
+            )
           ),
-          h('div', { class: 'alert ok' }, 'Dados preenchidos automaticamente. Informe apenas preço, estoque e categoria.'),
+          h('div', { class: 'alert ok' }, 'Nome, marca, código, peso e imagem preenchidos. Ajuste a categoria se precisar e informe preço e estoque.'),
           h('div', { class: 'grid g2' }, field('Seu preço (R$)', price), field('Quantidade para vender', qty)),
           field('Categoria', cat),
           h('button', { class: 'btn', onclick: (e) => busy(e.currentTarget, async () => {
@@ -133,8 +202,8 @@ function openNewListing(mid, s, done) {
             const unit = pq.unit || 'un';
             await api.call('marketUpsertListing', {
               marketId: mid,
-              name: (p.product_name || 'Produto').trim().slice(0, 160),
-              brand: (p.brands || '').split(',')[0].trim().slice(0, 80) || null,
+              name: name.slice(0, 160),
+              brand: brand.slice(0, 80) || null,
               barcode: p.code ? String(p.code).replace(/\D/g, '') || null : null,
               size: pq.size,
               unit,
@@ -142,54 +211,112 @@ function openNewListing(mid, s, done) {
               price: pr,
               allocated: parseInt(qty.value) || 0,
               active: (parseInt(qty.value) || 0) > 0,
-              imageUrl: p.image_url || p.image_front_small_url || p.image_front_thumb_url || null,
+              imageUrl: img,
+              description: null,
               kind: 'product'
             });
             toast('Produto cadastrado via Open Food Facts', 'ok');
             m.close(); done && done();
           }) }, 'Cadastrar no meu mercado')
         );
+        // rola o formulário para a vista
+        setTimeout(() => formBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
       };
+
+      const OFF_FIELDS = 'code,product_name,product_name_pt,generic_name,generic_name_pt,brands,quantity,categories,categories_tags,image_front_thumb_url,image_front_small_url,image_front_url,image_url';
+      const UA = { 'User-Agent': 'MeuMercadoTeste/1.0 (simulador local; contato@local)' };
+
+      const fetchOff = async (term) => {
+        const digits = term.replace(/\D/g, '');
+        const isBarcode = digits.length >= 8 && digits.length <= 14 && /^\d+$/.test(digits) && digits === term.replace(/\s/g, '');
+        if (isBarcode || (digits.length >= 8 && digits.length <= 14 && !/[a-zA-Zà-úÀ-Ú]/.test(term))) {
+          const code = digits;
+          const r = await fetch(`https://br.openfoodfacts.org/api/v2/product/${code}.json?fields=${OFF_FIELDS}`, { headers: UA });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          const data = await r.json();
+          if (data.status === 1 && data.product) return [data.product];
+          // tenta world se BR não achar
+          const r2 = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=${OFF_FIELDS}`, { headers: UA });
+          const data2 = await r2.json();
+          if (data2.status === 1 && data2.product) return [data2.product];
+          return [];
+        }
+        // Busca textual: normaliza e tenta BR; se pouco resultado, tenta variantes
+        const base = normalizeSearchTerm(term);
+        const variants = [base];
+        // "arroz 5kg" → também "arroz 5 kg" e "arroz"
+        const withoutSize = base.replace(/\s*\d+[.,]?\d*\s*(kg|g|ml|l)\b/gi, '').trim();
+        if (withoutSize && withoutSize !== base) variants.push(withoutSize);
+        const spaced = base.replace(/(\d)(kg|g|ml|l)\b/gi, '$1 $2');
+        if (spaced !== base) variants.push(spaced);
+
+        const seen = new Set();
+        const products = [];
+        for (const v of variants) {
+          if (products.length >= 12) break;
+          const url = `https://br.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(v)}&search_simple=1&action=process&json=1&page_size=20&fields=${OFF_FIELDS}`;
+          try {
+            const r = await fetch(url, { headers: UA });
+            if (!r.ok) continue;
+            const data = await r.json();
+            for (const p of (data.products || [])) {
+              const key = p.code || p.product_name;
+              if (!key || seen.has(key)) continue;
+              seen.add(key);
+              products.push(p);
+            }
+          } catch (_) { /* tenta próxima variante */ }
+        }
+        return products.slice(0, 16);
+      };
+
       const search = debounce(async () => {
         const term = (q.value || '').trim();
-        if (term.length < 2) { res.replaceChildren(h('p', { class: 'muted' }, 'Digite nome ou código de barras (mín. 2 caracteres).')); formBox.replaceChildren(); return; }
+        if (term.length < 2) {
+          res.replaceChildren(h('p', { class: 'muted' }, 'Digite nome (ex: Arroz 5kg) ou código de barras.'));
+          formBox.replaceChildren();
+          return;
+        }
         res.replaceChildren(h('p', { class: 'muted' }, 'Buscando na Open Food Facts Brasil…'));
         formBox.replaceChildren();
         try {
-          const isBarcode = /^\d{8,14}$/.test(term.replace(/\D/g, '')) && term.replace(/\D/g, '').length >= 8;
-          let products = [];
-          if (isBarcode) {
-            const code = term.replace(/\D/g, '');
-            const r = await fetch(`https://br.openfoodfacts.org/api/v2/product/${code}.json?fields=code,product_name,brands,quantity,image_front_thumb_url,image_front_small_url,image_url`, { headers: { 'User-Agent': 'MeuMercadoTeste/1.0 (simulador local)' } });
-            const data = await r.json();
-            if (data.status === 1 && data.product) products = [data.product];
-          } else {
-            const url = `https://br.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(term)}&search_simple=1&action=process&json=1&page_size=12&fields=code,product_name,brands,quantity,image_front_thumb_url,image_front_small_url,image_url`;
-            const r = await fetch(url, { headers: { 'User-Agent': 'MeuMercadoTeste/1.0 (simulador local)' } });
-            const data = await r.json();
-            products = data.products || [];
-          }
+          const products = await fetchOff(term);
           if (!products.length) {
-            res.replaceChildren(h('p', { class: 'muted' }, 'Nenhum produto encontrado. Tente outro termo ou cadastre como produto local.'));
+            res.replaceChildren(h('p', { class: 'muted' }, 'Nenhum produto encontrado. Tente outro termo (sem acento, ou só a marca) ou use a aba Produto local.'));
             return;
           }
-          res.replaceChildren(...products.map(p => h('div', { class: 'card flat row between', style: { cursor: 'pointer', gap: '10px' }, onclick: () => showForm(p) },
-            h('div', { class: 'row', style: { gap: '10px', flex: 1 } },
-              (p.image_front_thumb_url || p.image_url) ? h('img', { src: p.image_front_thumb_url || p.image_url, alt: '', style: { width: '48px', height: '48px', objectFit: 'contain', borderRadius: '6px', background: '#f5f5f5', flexShrink: 0 }, loading: 'lazy' }) : h('div', { style: { width: '48px', height: '48px', background: '#eee', borderRadius: '6px', flexShrink: 0 } }),
-              h('div', null, h('b', null, p.product_name || 'Sem nome'), h('div', { class: 'tiny muted' }, [p.brands, p.quantity, p.code].filter(Boolean).join(' · ')))
-            ),
-            h('button', { class: 'btn sm', type: 'button', onclick: (ev) => { ev.stopPropagation(); showForm(p); } }, 'Selecionar')
-          )));
+          res.replaceChildren(...products.map(p => {
+            const name = offName(p);
+            const brand = offBrand(p);
+            const thumb = offThumb(p);
+            const catGuess = guessCategory(p);
+            const catName = (S.cats.find(c => c.id === catGuess) || {}).name || '';
+            return h('div', { class: 'card flat row between', style: { cursor: 'pointer', gap: '10px' }, onclick: () => showForm(p) },
+              h('div', { class: 'row', style: { gap: '10px', flex: 1, minWidth: 0 } },
+                thumb ? h('img', { src: thumb, alt: '', style: { width: '52px', height: '52px', objectFit: 'contain', borderRadius: '6px', background: '#f5f5f5', flexShrink: 0 }, loading: 'lazy' })
+                  : h('div', { style: { width: '52px', height: '52px', background: '#eee', borderRadius: '6px', flexShrink: 0 } }),
+                h('div', { style: { minWidth: 0 } },
+                  h('b', { style: { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, name),
+                  h('div', { class: 'tiny muted' }, [brand, p.quantity, p.code].filter(Boolean).join(' · ')),
+                  catName && h('div', { class: 'tiny' }, h('span', { class: 'badge' }, catName))
+                )
+              ),
+              h('button', { class: 'btn sm', type: 'button', onclick: (ev) => { ev.stopPropagation(); showForm(p); } }, 'Selecionar')
+            );
+          }));
         } catch (err) {
-          res.replaceChildren(h('p', { class: 'muted' }, 'Falha na busca: ' + (err.message || 'rede indisponível') + '. Você pode cadastrar manualmente na aba Produto local.'));
+          res.replaceChildren(h('p', { class: 'muted' }, 'Falha na busca: ' + (err.message || 'rede indisponível') + '. Cadastre manualmente na aba Produto local.'));
         }
-      }, 400);
+      }, 450);
+
       q.addEventListener('input', search);
+      q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
       return h('div', { class: 'stack' },
-        h('div', { class: 'alert' }, 'Busca na base pública Open Food Facts Brasil. Selecione o produto para preencher nome, marca e imagem automaticamente. Preço e estoque são definidos por você.'),
+        h('div', { class: 'alert' }, 'Busca na base pública Open Food Facts Brasil. Nome, marca, código, peso e imagem vêm preenchidos; a categoria é sugerida automaticamente. Você define só preço e estoque.'),
         q, res, formBox
       );
     };
+
     const globalTab = () => { const q = inp({ ph: 'Buscar por nome, marca ou código de barras' }); const res = h('div', { class: 'stack' }); let all = null; const price = inp({ ph: 'Preço R$', mode: 'decimal' }); const qty = inp({ type: 'number', ph: 'Qtd. alocada', min: 0 });
       const search = debounce(async () => { if (!all) all = await api.col('globalProducts', { where: [['active', '==', true]], limit: 800 }); const t = R.normText(q.value); const rows = all.filter(g => !t || R.normText([g.name, g.brand, g.barcode].join(' ')).includes(t)).slice(0, 12); res.replaceChildren(...(rows.length ? rows.map(g => h('div', { class: 'card flat row between' }, h('div', null, h('b', null, g.name), h('div', { class: 'tiny muted' }, [g.brand, g.size && g.unit ? g.size + ' ' + g.unit : null, g.barcode].filter(Boolean).join(' · '))), h('button', { class: 'btn sm', onclick: (e) => busy(e.currentTarget, async () => { const p = parseMoney(price.value); if (!(p > 0)) throw new Error('Informe o preço antes.'); await api.call('marketUpsertListing', { marketId: mid, globalProductId: g.id, price: p, allocated: parseInt(qty.value) || 0, active: (parseInt(qty.value) || 0) > 0 }); toast('Produto vinculado', 'ok'); m.close(); done && done(); }) }, 'Vincular'))) : [h('p', { class: 'muted' }, 'Nada encontrado. Cadastre como produto local (a equipe da plataforma revisa depois).')])); }, 300);
       q.addEventListener('input', search); search(); return h('div', { class: 'stack' }, q, h('div', { class: 'grid g2' }, field('Seu preço (R$)', price), field('Quantidade para vender na plataforma', qty)), res); };

@@ -85,10 +85,29 @@ routeA("admin", /^\/admin\/equipe$/, async () => {
 /* ── Categorias globais ── */
 routeA("admin", /^\/admin\/categorias$/, async () => {
   if (!can(SESSION.user, 'categories.write')) return apanel('categorias', aNoPerm()); await adminBase(); const box = h('div', { class: 'stack' }), reqs = h('div', { class: 'stack' });
-  const edit = (c = {}) => { const n = inp({ value: c.name || '', max_len: 60, label: 'Nome' }), ic = inp({ value: c.emoji || '', max_len: 4, label: 'Emoji' }), ord = inp({ type: 'number', value: c.order ?? 100, label: 'Ordem' }); const act = h('input', { type: 'checkbox', checked: c.active !== false }); openModal((md) => h('div', { class: 'stack' }, field('Nome', n), h('div', { class: 'grid g2' }, field('Emoji', ic), field('Ordem', ord)), h('label', { class: 'row' }, act, ' Visível na loja'), h('button', { class: 'btn', onclick: (e) => busy(e.currentTarget, async () => { if (!n.value.trim()) throw new Error('Informe o nome.'); await api.call('adminUpsertCategory', { id: c.id, name: n.value.trim(), emoji: ic.value.trim(), order: parseInt(ord.value) || 100, active: act.checked }); md.close(); toast('Categoria salva', 'ok'); S.cats = await api.col('categories'); }) }, 'Salvar')), { title: c.id ? 'Editar categoria' : 'Nova categoria' }); };
-  S.cleanups.push(api.watchCol('categories', {}, (r) => box.replaceChildren(...r.sort((a, b) => (a.order ?? 99) - (b.order ?? 99)).map(c => h('div', { class: 'card flat row between' }, h('div', null, h('b', null, `${c.emoji || ''} ${c.name}`), h('div', { class: 'tiny muted' }, c.id)), h('div', { class: 'row' }, h('span', { class: 'badge ' + (c.active === false ? 'g' : '') }, c.active === false ? 'Oculta' : 'Visível'), h('button', { class: 'btn sm ghost', onclick: () => edit(c) }, 'Editar'))))), (e) => box.replaceChildren(errorBox(e))));
+  const catLabel = (c) => `${c.emoji || c.icon || ''} ${c.name}`.trim();
+  const edit = (c = {}) => { const n = inp({ value: c.name || '', max_len: 60, label: 'Nome' }), ic = inp({ value: c.emoji || c.icon || '', max_len: 4, label: 'Emoji' }), ord = inp({ type: 'number', value: c.order ?? 100, label: 'Ordem' }); const act = h('input', { type: 'checkbox', checked: c.active !== false }); openModal((md) => h('div', { class: 'stack' }, field('Nome', n), h('div', { class: 'grid g2' }, field('Emoji', ic), field('Ordem', ord)), h('label', { class: 'row' }, act, ' Visível na loja'), h('button', { class: 'btn', onclick: (e) => busy(e.currentTarget, async () => { if (!n.value.trim()) throw new Error('Informe o nome.'); await api.call('adminUpsertCategory', { id: c.id, name: n.value.trim(), emoji: ic.value.trim(), order: parseInt(ord.value) || 100, active: act.checked }); md.close(); toast('Categoria salva', 'ok'); S.cats = await api.col('categories'); }) }, 'Salvar')), { title: c.id ? 'Editar categoria' : 'Nova categoria' }); };
+  const seedDefaults = async (btn) => {
+    await busy(btn, async () => {
+      const r = await api.call('adminSeedDefaultCategories', {});
+      S.cats = await api.col('categories', { where: [['active', '==', true]] });
+      toast(r.created ? `${r.created} categorias criadas (${r.skipped} já existiam)` : 'Categorias padrão já estavam cadastradas', 'ok');
+    });
+  };
+  // Se ainda não há categorias, carrega as padrão automaticamente
+  try {
+    const existing = await api.col('categories', { limit: 5 });
+    if (!existing.length) await api.call('adminSeedDefaultCategories', {});
+  } catch (_) { /* sem permissão ou offline — botão manual abaixo */ }
+  S.cleanups.push(api.watchCol('categories', {}, (r) => box.replaceChildren(...r.sort((a, b) => (a.order ?? 99) - (b.order ?? 99)).map(c => h('div', { class: 'card flat row between' }, h('div', null, h('b', null, catLabel(c)), h('div', { class: 'tiny muted' }, c.id)), h('div', { class: 'row' }, h('span', { class: 'badge ' + (c.active === false ? 'g' : '') }, c.active === false ? 'Oculta' : 'Visível'), h('button', { class: 'btn sm ghost', onclick: () => edit(c) }, 'Editar'))))), (e) => box.replaceChildren(errorBox(e))));
   S.cleanups.push(api.watchCol('categoryRequests', { where: [['status', '==', 'pending']] }, (r) => reqs.replaceChildren(...(r.length ? r.map(q => h('div', { class: 'card flat row between' }, h('div', null, h('b', null, q.name), h('div', { class: 'tiny muted' }, 'Sugerida por ' + (q.marketId || '—'))), h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: (e) => busy(e.currentTarget, () => api.call('adminResolveCategoryRequest', { requestId: q.id, approve: true })) }, 'Aprovar'), h('button', { class: 'btn sm ghost', onclick: (e) => busy(e.currentTarget, () => api.call('adminResolveCategoryRequest', { requestId: q.id, approve: false })) }, 'Recusar')))) : [h('p', { class: 'muted' }, 'Nenhuma sugestão pendente.')])), () => {}));
-  return apanel('categorias', h('div', { class: 'row between' }, h('h1', { style: { margin: 0 } }, 'Categorias globais'), h('button', { class: 'btn', onclick: () => edit() }, icon('plus'), 'Nova')), h('p', { class: 'muted tiny' }, 'A estrutura é única para toda a plataforma; mercados apenas sugerem.'), box, h('h3', null, 'Sugestões dos mercados'), reqs);
+  return apanel('categorias',
+    h('div', { class: 'row between' }, h('h1', { style: { margin: 0 } }, 'Categorias globais'),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn ghost', onclick: (e) => seedDefaults(e.currentTarget) }, 'Carregar padrões'),
+        h('button', { class: 'btn', onclick: () => edit() }, icon('plus'), 'Nova'))),
+    h('p', { class: 'muted tiny' }, 'A estrutura é única para toda a plataforma; mercados apenas sugerem. Use “Carregar padrões” para criar de uma vez: Mercearia, Arroz e Feijão, Bebidas, Hortifruti, etc.'),
+    box, h('h3', null, 'Sugestões dos mercados'), reqs);
 });
 
 /* ── Catálogo global ── */

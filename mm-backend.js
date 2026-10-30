@@ -93,14 +93,53 @@ exports.adminUpsertCategory = onCall(OPTS, async (req) => {
   const name = str(d.name, 80, 'nome');
   const id = d.id ? str(d.id, 80, 'id') : slug(name) + '-' + crypto.randomBytes(2).toString('hex');
   const ref = db.collection('categories').doc(id);
+  // UI envia "emoji"; backend grava em "icon" (e espelha em "emoji" para a listagem)
+  const iconVal = optStr(d.icon || d.emoji, 8);
   await db.runTransaction(async (tx) => {
     const cur = await tx.get(ref);
     if (d.parentId) { const p = await tx.get(db.collection('categories').doc(d.parentId)); if (!p.exists) fail('invalid-argument', 'Categoria-pai inexistente.'); if (d.parentId === id) fail('invalid-argument', 'Categoria não pode ser pai de si mesma.'); }
-    const next = { name, parentId: d.parentId || null, order: int(d.order ?? 0, 0, 9999, 'ordem'), active: d.active !== false, icon: optStr(d.icon, 8), updatedAt: now() };
+    const next = { name, parentId: d.parentId || null, order: int(d.order ?? 0, 0, 9999, 'ordem'), active: d.active !== false, icon: iconVal, emoji: iconVal, updatedAt: now() };
     tx.set(ref, cur.exists ? next : { ...next, createdAt: now() }, { merge: true });
     audit(tx, { actor: c.uid, actorRole: c.role, action: cur.exists ? 'category.update' : 'category.create', target: `categories/${id}`, before: cur.exists ? cur.data() : null, after: next });
   });
   return { id };
+});
+
+/** Categorias padrão do supermercado (ids estáveis alinhados a CAT_EMOJI no front). Só cria as que ainda não existem. */
+const DEFAULT_CATEGORIES = [
+  { id: 'mercearia', name: 'Mercearia', icon: '🥫', order: 10 },
+  { id: 'arroz-e-feijao', name: 'Arroz e Feijão', icon: '🍚', order: 20 },
+  { id: 'cereais', name: 'Cereais e Grãos', icon: '🌾', order: 30 },
+  { id: 'massas', name: 'Massas', icon: '🍝', order: 40 },
+  { id: 'oleos-e-temperos', name: 'Óleos e Temperos', icon: '🫒', order: 45 },
+  { id: 'bebidas', name: 'Bebidas', icon: '🥤', order: 50 },
+  { id: 'laticinios', name: 'Laticínios', icon: '🧀', order: 60 },
+  { id: 'padaria', name: 'Padaria', icon: '🍞', order: 70 },
+  { id: 'hortifruti', name: 'Hortifruti', icon: '🥬', order: 80 },
+  { id: 'carnes', name: 'Carnes', icon: '🥩', order: 90 },
+  { id: 'peixes', name: 'Peixes e Frutos do Mar', icon: '🐟', order: 100 },
+  { id: 'congelados', name: 'Congelados', icon: '🧊', order: 110 },
+  { id: 'doces-e-snacks', name: 'Doces e Snacks', icon: '🍫', order: 115 },
+  { id: 'limpeza', name: 'Limpeza', icon: '🧽', order: 120 },
+  { id: 'higiene', name: 'Higiene e Beleza', icon: '🧴', order: 130 },
+  { id: 'bebes', name: 'Bebês', icon: '🍼', order: 140 },
+  { id: 'pet', name: 'Pet', icon: '🐾', order: 150 },
+  { id: 'cesta-basica', name: 'Cesta Básica', icon: '🧺', order: 160 },
+];
+
+exports.adminSeedDefaultCategories = onCall(OPTS, async (req) => {
+  const c = needPlatform(req, 'categories.write');
+  let created = 0, skipped = 0;
+  for (const cat of DEFAULT_CATEGORIES) {
+    const ref = db.collection('categories').doc(cat.id);
+    const cur = await ref.get();
+    if (cur.exists) { skipped++; continue; }
+    const doc = { name: cat.name, parentId: null, order: cat.order, active: true, icon: cat.icon, emoji: cat.icon, createdAt: now(), updatedAt: now() };
+    await ref.set(doc);
+    created++;
+  }
+  await audit(null, { actor: c.uid, actorRole: c.role, action: 'category.seedDefaults', target: 'categories', after: { created, skipped } });
+  return { created, skipped, total: DEFAULT_CATEGORIES.length };
 });
 
 // Categorias nunca são excluídas: apenas desativadas, preservando produtos e histórico.

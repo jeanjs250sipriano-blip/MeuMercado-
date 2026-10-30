@@ -161,10 +161,12 @@ function renderShell(area) {
   updateBadges();
 }
 function renderDemoBar() {
-  const b = $('#sim-bar'); b.hidden = false; const u = SESSION.user;
-  b.replaceChildren(h('span', null, '🧪 SIMULADOR LOCAL — dados só neste navegador · pagamentos FICTÍCIOS · nada aqui é pedido, venda ou cobrança real'),
-    h('span', { style: { marginLeft: 'auto', display: 'inline-flex', gap: '8px', alignItems: 'center' } }, u ? h('span', null, `Perfil ativo: ${u.name} · ${ROLE_LABEL[u.role] || u.role}`) : h('span', null, 'Visitante'),
-      h('button', { onclick: openSwitchAccount }, u ? 'Trocar de conta' : 'Entrar')));
+  const el = document.getElementById('sim-bar');
+  if (!el) return;
+  // Indicador discreto de ambiente de demonstração (sem faixa amarela grande)
+  el.hidden = false;
+  el.className = 'demo-bar demo-bar-soft';
+  el.replaceChildren(h('span', { class: 'tiny muted' }, 'Ambiente de demonstração — dados locais neste navegador · pagamentos fictícios'));
 }
 
 /* ───────────────────────── Notificações ───────────────────────── */

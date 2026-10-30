@@ -30,7 +30,7 @@
       return b64(await subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: saltU8, iterations: iter }, key, 256));
     }
     async function makeSecret(password) { const salt = getRandom(new Uint8Array(16)); const iter = iterations; return { salt: b64(salt), iter, hash: await derive(password, salt, iter) }; }
-    function checkPassword(p) { if (typeof p !== 'string' || p.length < 4) throw fail('weak-password', 'A senha precisa ter pelo menos 4 caracteres (é um simulador: use algo simples, nunca uma senha real).'); if (p.length > 100) throw fail('weak-password', 'Senha longa demais.'); }
+    function checkPassword(p) { if (typeof p !== 'string' || p.length < 4) throw fail('weak-password', 'A senha precisa ter 4 dígitos numéricos.'); if (p.length > 100) throw fail('weak-password', 'Senha longa demais.'); }
     function checkUsername(u) { if (!USERNAME_RE.test(u)) throw fail('invalid-username', 'Usuário inválido: use de 3 a 30 letras minúsculas, números, ponto, hífen ou sublinhado.'); }
 
     const publicView = (a) => a && ({ uid: a.uid, username: a.username, name: a.displayName, role: a.role, marketId: a.marketId || null, perms: a.perms || [], active: a.active !== false, email: `${a.username}@local`, createdAt: a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : a.createdAt, lastLoginAt: a.lastLoginAt && a.lastLoginAt.toMillis ? a.lastLoginAt.toMillis() : (a.lastLoginAt || null) });

@@ -107,34 +107,175 @@ exports.adminUpsertCategory = onCall(OPTS, async (req) => {
 
 /** Categorias padrão do supermercado (ids estáveis alinhados a CAT_EMOJI no front). Só cria as que ainda não existem. */
 const DEFAULT_CATEGORIES = [
-  { id: 'mercearia', name: 'Mercearia', icon: '🥫', order: 10 },
-  { id: 'arroz-e-feijao', name: 'Arroz e Feijão', icon: '🍚', order: 20 },
-  { id: 'cereais', name: 'Cereais e Grãos', icon: '🌾', order: 30 },
-  { id: 'massas', name: 'Massas', icon: '🍝', order: 40 },
-  { id: 'oleos-e-temperos', name: 'Óleos e Temperos', icon: '🫒', order: 45 },
-  { id: 'bebidas', name: 'Bebidas', icon: '🥤', order: 50 },
-  { id: 'laticinios', name: 'Laticínios', icon: '🧀', order: 60 },
-  { id: 'padaria', name: 'Padaria', icon: '🍞', order: 70 },
-  { id: 'hortifruti', name: 'Hortifruti', icon: '🥬', order: 80 },
-  { id: 'carnes', name: 'Carnes', icon: '🥩', order: 90 },
-  { id: 'peixes', name: 'Peixes e Frutos do Mar', icon: '🐟', order: 100 },
-  { id: 'congelados', name: 'Congelados', icon: '🧊', order: 110 },
-  { id: 'doces-e-snacks', name: 'Doces e Snacks', icon: '🍫', order: 115 },
-  { id: 'limpeza', name: 'Limpeza', icon: '🧽', order: 120 },
-  { id: 'higiene', name: 'Higiene e Beleza', icon: '🧴', order: 130 },
-  { id: 'bebes', name: 'Bebês', icon: '🍼', order: 140 },
-  { id: 'pet', name: 'Pet', icon: '🐾', order: 150 },
-  { id: 'cesta-basica', name: 'Cesta Básica', icon: '🧺', order: 160 },
+  // 20 categorias principais + subcategorias (ids estáveis, idempotente)
+  { id: 'hortifruti', name: 'Hortifruti', icon: '🥬', order: 10 },
+  { id: 'hortifruti-frutas', name: 'Frutas', icon: '🍎', order: 11, parentId: 'hortifruti' },
+  { id: 'hortifruti-verduras', name: 'Verduras e folhas', icon: '🥗', order: 12, parentId: 'hortifruti' },
+  { id: 'hortifruti-legumes', name: 'Legumes', icon: '🥕', order: 13, parentId: 'hortifruti' },
+  { id: 'hortifruti-raizes', name: 'Raízes e tubérculos', icon: '🥔', order: 14, parentId: 'hortifruti' },
+  { id: 'hortifruti-ervas', name: 'Ervas e temperos frescos', icon: '🌿', order: 15, parentId: 'hortifruti' },
+  { id: 'hortifruti-secas', name: 'Frutas secas', icon: '🥜', order: 16, parentId: 'hortifruti' },
+  { id: 'acougue', name: 'Açougue', icon: '🥩', order: 20 },
+  { id: 'acougue-bovina', name: 'Carne bovina', icon: '🥩', order: 21, parentId: 'acougue' },
+  { id: 'acougue-suina', name: 'Carne suína', icon: '🥓', order: 22, parentId: 'acougue' },
+  { id: 'acougue-aves', name: 'Frango e aves', icon: '🍗', order: 23, parentId: 'acougue' },
+  { id: 'acougue-temperadas', name: 'Linguiças e carnes temperadas', icon: '🌭', order: 24, parentId: 'acougue' },
+  { id: 'acougue-churrasco', name: 'Carnes para churrasco', icon: '🔥', order: 25, parentId: 'acougue' },
+  { id: 'acougue-hamburguer', name: 'Hambúrgueres frescos', icon: '🍔', order: 26, parentId: 'acougue' },
+  { id: 'peixaria', name: 'Peixaria', icon: '🐟', order: 30 },
+  { id: 'peixaria-peixes', name: 'Peixes', icon: '🐟', order: 31, parentId: 'peixaria' },
+  { id: 'peixaria-frutos', name: 'Frutos do mar', icon: '🦐', order: 32, parentId: 'peixaria' },
+  { id: 'peixaria-camarao', name: 'Camarão', icon: '🦐', order: 33, parentId: 'peixaria' },
+  { id: 'peixaria-congelados', name: 'Peixes congelados', icon: '🧊', order: 34, parentId: 'peixaria' },
+  { id: 'mercearia-basica', name: 'Mercearia básica', icon: '🍚', order: 40 },
+  { id: 'mercearia-basica-arroz', name: 'Arroz', icon: '🍚', order: 41, parentId: 'mercearia-basica' },
+  { id: 'mercearia-basica-feijao', name: 'Feijão e grãos', icon: '🫘', order: 42, parentId: 'mercearia-basica' },
+  { id: 'mercearia-basica-acucar', name: 'Açúcar e adoçantes', icon: '🍬', order: 43, parentId: 'mercearia-basica' },
+  { id: 'mercearia-basica-farinhas', name: 'Farinhas e farofas', icon: '🌾', order: 44, parentId: 'mercearia-basica' },
+  { id: 'mercearia-basica-oleos', name: 'Óleos e azeites', icon: '🫒', order: 45, parentId: 'mercearia-basica' },
+  { id: 'mercearia-basica-temperos', name: 'Sal e temperos', icon: '🧂', order: 46, parentId: 'mercearia-basica' },
+  { id: 'mercearia-basica-massas', name: 'Massas', icon: '🍝', order: 47, parentId: 'mercearia-basica' },
+  { id: 'mercearia-alimentos', name: 'Mercearia e alimentos', icon: '🥫', order: 50 },
+  { id: 'mercearia-alimentos-enlatados', name: 'Enlatados e conservas', icon: '🥫', order: 51, parentId: 'mercearia-alimentos' },
+  { id: 'mercearia-alimentos-molhos', name: 'Molhos e extratos', icon: '🍅', order: 52, parentId: 'mercearia-alimentos' },
+  { id: 'mercearia-alimentos-biscoitos', name: 'Biscoitos e bolachas', icon: '🍪', order: 53, parentId: 'mercearia-alimentos' },
+  { id: 'mercearia-alimentos-cereais', name: 'Cereais e granolas', icon: '🥣', order: 54, parentId: 'mercearia-alimentos' },
+  { id: 'mercearia-alimentos-doces', name: 'Doces e geleias', icon: '🍯', order: 55, parentId: 'mercearia-alimentos' },
+  { id: 'mercearia-alimentos-chocolates', name: 'Chocolates e bomboniere', icon: '🍫', order: 56, parentId: 'mercearia-alimentos' },
+  { id: 'mercearia-alimentos-snacks', name: 'Salgadinhos e snacks', icon: '🍿', order: 57, parentId: 'mercearia-alimentos' },
+  { id: 'mercearia-alimentos-sopas', name: 'Sopas e alimentos instantâneos', icon: '🍜', order: 58, parentId: 'mercearia-alimentos' },
+  { id: 'matinais', name: 'Matinais', icon: '☕', order: 60 },
+  { id: 'matinais-cafe', name: 'Café', icon: '☕', order: 61, parentId: 'matinais' },
+  { id: 'matinais-achocolatados', name: 'Achocolatados', icon: '🥛', order: 62, parentId: 'matinais' },
+  { id: 'matinais-chas', name: 'Chás', icon: '🍵', order: 63, parentId: 'matinais' },
+  { id: 'matinais-aveia', name: 'Aveia', icon: '🌾', order: 64, parentId: 'matinais' },
+  { id: 'matinais-cereais', name: 'Cereais matinais', icon: '🥣', order: 65, parentId: 'matinais' },
+  { id: 'matinais-geleias', name: 'Geleias e mel', icon: '🍯', order: 66, parentId: 'matinais' },
+  { id: 'padaria', name: 'Padaria e confeitaria', icon: '🍞', order: 70 },
+  { id: 'padaria-paes', name: 'Pães', icon: '🥖', order: 71, parentId: 'padaria' },
+  { id: 'padaria-bolos', name: 'Bolos e tortas', icon: '🎂', order: 72, parentId: 'padaria' },
+  { id: 'padaria-salgados', name: 'Salgados', icon: '🥐', order: 73, parentId: 'padaria' },
+  { id: 'padaria-doces', name: 'Doces', icon: '🧁', order: 74, parentId: 'padaria' },
+  { id: 'padaria-biscoitos', name: 'Biscoitos de padaria', icon: '🍪', order: 75, parentId: 'padaria' },
+  { id: 'padaria-confeitaria', name: 'Confeitaria', icon: '🍰', order: 76, parentId: 'padaria' },
+  { id: 'frios-laticinios', name: 'Frios e laticínios', icon: '🧀', order: 80 },
+  { id: 'frios-laticinios-leites', name: 'Leites', icon: '🥛', order: 81, parentId: 'frios-laticinios' },
+  { id: 'frios-laticinios-queijos', name: 'Queijos', icon: '🧀', order: 82, parentId: 'frios-laticinios' },
+  { id: 'frios-laticinios-iogurtes', name: 'Iogurtes', icon: '🥛', order: 83, parentId: 'frios-laticinios' },
+  { id: 'frios-laticinios-manteigas', name: 'Manteigas e margarinas', icon: '🧈', order: 84, parentId: 'frios-laticinios' },
+  { id: 'frios-laticinios-embutidos', name: 'Presuntos e embutidos', icon: '🥓', order: 85, parentId: 'frios-laticinios' },
+  { id: 'frios-laticinios-requeijao', name: 'Requeijão e cremes', icon: '🫙', order: 86, parentId: 'frios-laticinios' },
+  { id: 'frios-laticinios-ovos', name: 'Ovos', icon: '🥚', order: 87, parentId: 'frios-laticinios' },
+  { id: 'congelados', name: 'Congelados', icon: '🧊', order: 90 },
+  { id: 'congelados-pizzas', name: 'Pizzas e lasanhas', icon: '🍕', order: 91, parentId: 'congelados' },
+  { id: 'congelados-hamburguer', name: 'Hambúrgueres', icon: '🍔', order: 92, parentId: 'congelados' },
+  { id: 'congelados-batatas', name: 'Batatas congeladas', icon: '🍟', order: 93, parentId: 'congelados' },
+  { id: 'congelados-vegetais', name: 'Vegetais congelados', icon: '🥦', order: 94, parentId: 'congelados' },
+  { id: 'congelados-pratos', name: 'Pratos prontos', icon: '🍱', order: 95, parentId: 'congelados' },
+  { id: 'congelados-sorvetes', name: 'Sorvetes e sobremesas', icon: '🍦', order: 96, parentId: 'congelados' },
+  { id: 'bebidas', name: 'Bebidas', icon: '🥤', order: 100 },
+  { id: 'bebidas-agua', name: 'Água', icon: '💧', order: 101, parentId: 'bebidas' },
+  { id: 'bebidas-refrigerantes', name: 'Refrigerantes', icon: '🥤', order: 102, parentId: 'bebidas' },
+  { id: 'bebidas-sucos', name: 'Sucos', icon: '🧃', order: 103, parentId: 'bebidas' },
+  { id: 'bebidas-energeticos', name: 'Energéticos', icon: '⚡', order: 104, parentId: 'bebidas' },
+  { id: 'bebidas-isotonicos', name: 'Isotônicos', icon: '🏃', order: 105, parentId: 'bebidas' },
+  { id: 'bebidas-vegetais', name: 'Bebidas vegetais', icon: '🥥', order: 106, parentId: 'bebidas' },
+  { id: 'bebidas-alcoolicas', name: 'Cervejas, vinhos e outras bebidas alcoólicas', icon: '🍺', order: 107, parentId: 'bebidas' },
+  { id: 'limpeza', name: 'Limpeza doméstica', icon: '🧽', order: 110 },
+  { id: 'limpeza-detergentes', name: 'Detergentes', icon: '🧴', order: 111, parentId: 'limpeza' },
+  { id: 'limpeza-desinfetantes', name: 'Desinfetantes', icon: '🧪', order: 112, parentId: 'limpeza' },
+  { id: 'limpeza-agua-sanitaria', name: 'Água sanitária', icon: '🧴', order: 113, parentId: 'limpeza' },
+  { id: 'limpeza-multiuso', name: 'Limpadores multiuso', icon: '✨', order: 114, parentId: 'limpeza' },
+  { id: 'limpeza-banheiro', name: 'Limpeza de banheiro', icon: '🚽', order: 115, parentId: 'limpeza' },
+  { id: 'limpeza-cozinha', name: 'Limpeza de cozinha', icon: '🍳', order: 116, parentId: 'limpeza' },
+  { id: 'limpeza-esponjas', name: 'Esponjas e acessórios', icon: '🧽', order: 117, parentId: 'limpeza' },
+  { id: 'lavanderia', name: 'Lavanderia', icon: '👕', order: 120 },
+  { id: 'lavanderia-po', name: 'Sabão em pó', icon: '📦', order: 121, parentId: 'lavanderia' },
+  { id: 'lavanderia-liquido', name: 'Sabão líquido', icon: '🧴', order: 122, parentId: 'lavanderia' },
+  { id: 'lavanderia-amaciantes', name: 'Amaciantes', icon: '💜', order: 123, parentId: 'lavanderia' },
+  { id: 'lavanderia-tira-manchas', name: 'Tira-manchas', icon: '🧼', order: 124, parentId: 'lavanderia' },
+  { id: 'lavanderia-alvejantes', name: 'Alvejantes', icon: '⚪', order: 125, parentId: 'lavanderia' },
+  { id: 'lavanderia-roupas', name: 'Cuidados com roupas', icon: '👔', order: 126, parentId: 'lavanderia' },
+  { id: 'higiene', name: 'Higiene pessoal', icon: '🧴', order: 130 },
+  { id: 'higiene-sabonetes', name: 'Sabonetes', icon: '🧼', order: 131, parentId: 'higiene' },
+  { id: 'higiene-shampoo', name: 'Shampoo e condicionador', icon: '💇', order: 132, parentId: 'higiene' },
+  { id: 'higiene-dental', name: 'Cremes dentais', icon: '🪥', order: 133, parentId: 'higiene' },
+  { id: 'higiene-escovas', name: 'Escovas e fio dental', icon: '🦷', order: 134, parentId: 'higiene' },
+  { id: 'higiene-desodorantes', name: 'Desodorantes', icon: '💨', order: 135, parentId: 'higiene' },
+  { id: 'higiene-papel', name: 'Papel higiênico', icon: '🧻', order: 136, parentId: 'higiene' },
+  { id: 'higiene-absorventes', name: 'Absorventes', icon: '🩸', order: 137, parentId: 'higiene' },
+  { id: 'higiene-barba', name: 'Barba e depilação', icon: '🪒', order: 138, parentId: 'higiene' },
+  { id: 'beleza', name: 'Beleza e perfumaria', icon: '💄', order: 140 },
+  { id: 'beleza-cremes', name: 'Cremes e hidratantes', icon: '🧴', order: 141, parentId: 'beleza' },
+  { id: 'beleza-maquiagem', name: 'Maquiagem', icon: '💋', order: 142, parentId: 'beleza' },
+  { id: 'beleza-perfumes', name: 'Perfumes', icon: '🌸', order: 143, parentId: 'beleza' },
+  { id: 'beleza-cabelos', name: 'Cuidados com cabelos', icon: '💇', order: 144, parentId: 'beleza' },
+  { id: 'beleza-protetores', name: 'Protetores solares', icon: '☀️', order: 145, parentId: 'beleza' },
+  { id: 'beleza-pele', name: 'Produtos para cuidados com a pele', icon: '✨', order: 146, parentId: 'beleza' },
+  { id: 'bebes', name: 'Bebê e criança', icon: '🍼', order: 150 },
+  { id: 'bebes-fraldas', name: 'Fraldas', icon: '👶', order: 151, parentId: 'bebes' },
+  { id: 'bebes-lencos', name: 'Lenços umedecidos', icon: '🧻', order: 152, parentId: 'bebes' },
+  { id: 'bebes-alimentacao', name: 'Alimentação infantil', icon: '🥣', order: 153, parentId: 'bebes' },
+  { id: 'bebes-formulas', name: 'Fórmulas infantis', icon: '🍼', order: 154, parentId: 'bebes' },
+  { id: 'bebes-higiene', name: 'Higiene do bebê', icon: '🧼', order: 155, parentId: 'bebes' },
+  { id: 'bebes-banho', name: 'Banho e cuidados com a pele', icon: '🛁', order: 156, parentId: 'bebes' },
+  { id: 'bebes-mamadeiras', name: 'Mamadeiras e acessórios', icon: '🍼', order: 157, parentId: 'bebes' },
+  { id: 'pet', name: 'Pet shop', icon: '🐾', order: 160 },
+  { id: 'pet-caes', name: 'Ração para cães', icon: '🐕', order: 161, parentId: 'pet' },
+  { id: 'pet-gatos', name: 'Ração para gatos', icon: '🐈', order: 162, parentId: 'pet' },
+  { id: 'pet-outros', name: 'Alimentos para outros animais', icon: '🐦', order: 163, parentId: 'pet' },
+  { id: 'pet-petiscos', name: 'Petiscos', icon: '🦴', order: 164, parentId: 'pet' },
+  { id: 'pet-areia', name: 'Areia higiênica', icon: '🐈', order: 165, parentId: 'pet' },
+  { id: 'pet-higiene', name: 'Higiene e limpeza pet', icon: '🧼', order: 166, parentId: 'pet' },
+  { id: 'pet-acessorios', name: 'Brinquedos e acessórios', icon: '🎾', order: 167, parentId: 'pet' },
+  { id: 'bazar', name: 'Bazar e utilidades domésticas', icon: '🏠', order: 170 },
+  { id: 'bazar-cozinha', name: 'Utensílios de cozinha', icon: '🍳', order: 171, parentId: 'bazar' },
+  { id: 'bazar-descartaveis', name: 'Descartáveis', icon: '🥡', order: 172, parentId: 'bazar' },
+  { id: 'bazar-organizacao', name: 'Organização doméstica', icon: '📦', order: 173, parentId: 'bazar' },
+  { id: 'bazar-banheiro', name: 'Artigos para banheiro', icon: '🚿', order: 174, parentId: 'bazar' },
+  { id: 'bazar-panelas', name: 'Panelas e recipientes', icon: '🍲', order: 175, parentId: 'bazar' },
+  { id: 'bazar-churrasco', name: 'Artigos para churrasco', icon: '🔥', order: 176, parentId: 'bazar' },
+  { id: 'papelaria', name: 'Papelaria e escritório', icon: '📎', order: 180 },
+  { id: 'papelaria-cadernos', name: 'Cadernos', icon: '📓', order: 181, parentId: 'papelaria' },
+  { id: 'papelaria-canetas', name: 'Canetas e lápis', icon: '✏️', order: 182, parentId: 'papelaria' },
+  { id: 'papelaria-escolares', name: 'Materiais escolares', icon: '📚', order: 183, parentId: 'papelaria' },
+  { id: 'papelaria-papeis', name: 'Papéis', icon: '📄', order: 184, parentId: 'papelaria' },
+  { id: 'papelaria-escritorio', name: 'Materiais de escritório', icon: '🖇️', order: 185, parentId: 'papelaria' },
+  { id: 'utilidades', name: 'Utilidades e manutenção', icon: '🔧', order: 190 },
+  { id: 'utilidades-pilhas', name: 'Pilhas e baterias', icon: '🔋', order: 191, parentId: 'utilidades' },
+  { id: 'utilidades-lampadas', name: 'Lâmpadas', icon: '💡', order: 192, parentId: 'utilidades' },
+  { id: 'utilidades-ferramentas', name: 'Ferramentas básicas', icon: '🛠️', order: 193, parentId: 'utilidades' },
+  { id: 'utilidades-eletricos', name: 'Acessórios elétricos', icon: '🔌', order: 194, parentId: 'utilidades' },
+  { id: 'utilidades-jardim', name: 'Produtos para jardim', icon: '🌱', order: 195, parentId: 'utilidades' },
+  { id: 'naturais', name: 'Produtos naturais e especiais', icon: '🌿', order: 200 },
+  { id: 'naturais-organicos', name: 'Orgânicos', icon: '🥦', order: 201, parentId: 'naturais' },
+  { id: 'naturais-integrais', name: 'Integrais', icon: '🌾', order: 202, parentId: 'naturais' },
+  { id: 'naturais-sem-gluten', name: 'Sem glúten', icon: '🚫', order: 203, parentId: 'naturais' },
+  { id: 'naturais-sem-lactose', name: 'Sem lactose', icon: '🥛', order: 204, parentId: 'naturais' },
+  { id: 'naturais-veganos', name: 'Produtos veganos', icon: '🌱', order: 205, parentId: 'naturais' },
+  { id: 'naturais-sem-acucar', name: 'Produtos sem açúcar', icon: '🍬', order: 206, parentId: 'naturais' },
+  { id: 'naturais-funcionais', name: 'Produtos funcionais', icon: '💪', order: 207, parentId: 'naturais' },
+  // aliases legados (compatibilidade com CAT_EMOJI antigo)
+  { id: 'mercearia', name: 'Mercearia', icon: '🥫', order: 49 },
+  { id: 'arroz-e-feijao', name: 'Arroz e Feijão', icon: '🍚', order: 41 },
+  { id: 'cereais', name: 'Cereais e Grãos', icon: '🌾', order: 54 },
+  { id: 'massas', name: 'Massas', icon: '🍝', order: 47 },
+  { id: 'laticinios', name: 'Laticínios', icon: '🧀', order: 80 },
+  { id: 'carnes', name: 'Carnes', icon: '🥩', order: 20 },
+  { id: 'peixes', name: 'Peixes e Frutos do Mar', icon: '🐟', order: 30 },
+  { id: 'cesta-basica', name: 'Cesta Básica', icon: '🧺', order: 48 },
 ];
 
 exports.adminSeedDefaultCategories = onCall(OPTS, async (req) => {
   const c = needPlatform(req, 'categories.write');
   let created = 0, skipped = 0;
-  for (const cat of DEFAULT_CATEGORIES) {
+  // Pais primeiro, depois filhos
+  const sorted = [...DEFAULT_CATEGORIES].sort((a, b) => (a.parentId ? 1 : 0) - (b.parentId ? 1 : 0) || a.order - b.order);
+  for (const cat of sorted) {
     const ref = db.collection('categories').doc(cat.id);
     const cur = await ref.get();
     if (cur.exists) { skipped++; continue; }
-    const doc = { name: cat.name, parentId: null, order: cat.order, active: true, icon: cat.icon, emoji: cat.icon, createdAt: now(), updatedAt: now() };
+    const doc = { name: cat.name, parentId: cat.parentId || null, order: cat.order, active: true, icon: cat.icon, emoji: cat.icon, createdAt: now(), updatedAt: now() };
     await ref.set(doc);
     created++;
   }
@@ -271,6 +412,29 @@ exports.adminSaveDepartment = onCall(OPTS, async (req) => {
 const PROSPECT_STATES = ['new', 'contacted', 'docs_pending', 'in_review', 'awaiting_contact', 'approved', 'rejected', 'awaiting_setup', 'active', 'suspended'];
 
 // Solicitação iniciada pelo próprio mercado (pública, com validação e limite simples por e-mail).
+
+/** Cadastro público de mercado (cria conta market_staff + mercado em awaiting_setup). */
+exports.publicSignUpMarket = onCall(OPTS, async (req) => {
+  const d = req.data || {};
+  const username = str(d.username, 40, 'usuário').toLowerCase();
+  const password = String(d.password || '');
+  const name = str(d.name, 120, 'nome');
+  if (!/^\d{4}$/.test(password)) fail('invalid-argument', 'A senha deve ter exatamente 4 dígitos.');
+  const perms = R.MARKET_PERMS || ['orders.read','orders.picking','orders.dispatch','orders.deliver','products.read','products.write','products.import','stock.write','settings.write','finance.read','promotions.write','staff.manage','chat.use'];
+  const marketId = slug(name) + '-' + crypto.randomBytes(2).toString('hex');
+  const { account } = await auth.createAccount({ username, name, password, role: 'market_staff', marketId, perms, mustChangePassword: false }, 'self');
+  await db.collection('markets').doc(marketId).set({
+    name, tradeName: name, status: 'awaiting_setup', acceptingOrders: false,
+    ratingSum: 0, ratingCount: 0, ratingAvg: 0, createdAt: now(),
+    ownerUid: account.uid, cityId: null
+  });
+  await db.collection('markets').doc(marketId).collection('staff').doc(account.uid).set({
+    name: account.name, email: account.email || username + '@local', perms, preset: 'manager', active: true, createdAt: now(), createdBy: account.uid
+  });
+  await audit(null, { actor: account.uid, actorRole: 'market_staff', action: 'market.publicSignup', target: `markets/${marketId}`, after: { name } });
+  return { ok: true, marketId, username: account.username };
+});
+
 exports.marketRequestSignup = onCall(OPTS, async (req) => {
   const d = req.data || {};
   const email = str(d.email, 160, 'e-mail').toLowerCase();
@@ -518,6 +682,52 @@ exports.marketUpdateSettings = onCall(OPTS, async (req) => {
 });
 
 /* ---------- Anúncios: preço, promoção e estoque alocado ---------- */
+
+/** Garante produto no Catálogo Global (sem preço/estoque). Usado ao cadastrar via API externa. */
+exports.marketEnsureGlobalProduct = onCall(OPTS, async (req) => {
+  const d = req.data || {};
+  const marketId = str(d.marketId, 100, 'mercado');
+  needMarket(req, marketId, 'products.write');
+  const name = str(d.name, 160, 'nome');
+  const brand = optStr(d.brand, 80);
+  const barcode = d.barcode ? String(d.barcode).replace(/\D/g, '') || null : null;
+  const categoryId = str(d.categoryId, 80, 'categoria');
+  const size = d.size != null ? Number(d.size) : null;
+  const unit = optStr(d.unit, 12);
+  const imageUrl = optStr(d.imageUrl, 500);
+  const description = optStr(d.description, 800);
+  const source = optStr(d.source, 40) || 'openfoodfacts';
+  const externalId = optStr(d.externalId, 40);
+
+  // Dedup por código de barras
+  if (barcode) {
+    const dup = await db.collection('globalProducts').where('barcode', '==', barcode).limit(1).get();
+    if (!dup.empty) {
+      const existing = dup.docs[0];
+      // atualiza imagem se faltava
+      const g = existing.data();
+      if (!g.imageUrl && imageUrl) await existing.ref.update({ imageUrl, updatedAt: now() });
+      return { id: existing.id, created: false };
+    }
+  }
+  // Dedup por externalId da fonte
+  if (externalId) {
+    const byExt = await db.collection('globalProducts').where('externalId', '==', externalId).where('source', '==', source).limit(1).get();
+    if (!byExt.empty) return { id: byExt.docs[0].id, created: false };
+  }
+  const id = db.collection('globalProducts').doc().id;
+  const doc = {
+    name, brand, barcode, categoryId, size, unit, imageUrl, description,
+    active: true, local: false,
+    source, externalId: externalId || null,
+    keywords: keywordsOf(name, brand),
+    createdAt: now(), updatedAt: now()
+  };
+  await db.collection('globalProducts').doc(id).set(doc);
+  await audit(null, { actor: (req.auth && req.auth.uid) || 'market', actorRole: 'market_staff', action: 'globalProduct.ensure', target: `globalProducts/${id}`, marketId, after: { name, barcode, source } });
+  return { id, created: true };
+});
+
 exports.marketUpsertListing = onCall(OPTS, async (req) => {
   const d = req.data || {};
   const marketId = str(d.marketId, 100, 'mercado');
@@ -1202,12 +1412,22 @@ exports.confirmDelivery = onCall(OPTS, async (req) => {
       return;
     }
     tx.update(sec.ref, { used: true, usedAt: now(), usedBy: c.uid });
-    tx.update(ref, { status: 'delivered', deliveredAt: now(), deliveredBy: c.uid, disputeUntil: plusMin(cfg.disputeWindowMinutes) });
+    // Código válido → entrega + conclusão imediata (sem segunda confirmação do cliente)
+    tx.update(ref, {
+      status: 'completed',
+      deliveredAt: now(), deliveredBy: c.uid,
+      completedAt: now(), completedBy: c.uid,
+      disputeUntil: plusMin(cfg.disputeWindowMinutes)
+    });
     orderEvent(tx, orderId, { type: 'delivered', actor: c.uid, from: 'out_for_delivery', to: 'delivered', data: { validation: 'code_ok' } });
+    orderEvent(tx, orderId, { type: 'completed', actor: c.uid, from: 'delivered', to: 'completed', data: { why: 'codigo_entrega_validado' } });
     ledger(tx, { id: `delivery_${orderId}`, type: 'delivery_confirmed', orderId, marketId: order.marketId, amount: (order.final || order.totals).marketReceivable });
-    notifyUser(tx, order.customerId, { type: 'delivered', title: 'Entrega confirmada', body: 'Avalie o mercado quando quiser.', ref: orderId });
-    notifyMarket(tx, order.marketId, { type: 'delivered', title: 'Entrega confirmada', body: orderId.slice(0, 6).toUpperCase(), ref: orderId });
-    audit(tx, { actor: c.uid, actorRole: c.role, action: 'order.delivered', target: ref.path, marketId: order.marketId });
+    // crédito do mercado para repasse (mesmo fluxo de completeOrderInternal)
+    const recv = (order.final || order.totals || {}).marketReceivable || 0;
+    if (recv > 0) ledger(tx, { id: `market_credit:${orderId}`, type: 'market_credit', orderId, marketId: order.marketId, amount: recv });
+    notifyUser(tx, order.customerId, { type: 'completed', title: 'Pedido entregue e concluído', body: 'Entrega confirmada pelo código. Avalie o mercado quando quiser. Você ainda pode abrir uma reclamação se necessário.', ref: orderId });
+    notifyMarket(tx, order.marketId, { type: 'completed', title: 'Entrega concluída', body: orderId.slice(0, 6).toUpperCase() + ' — código validado', ref: orderId });
+    audit(tx, { actor: c.uid, actorRole: c.role, action: 'order.completed', target: ref.path, marketId: order.marketId, after: { via: 'delivery_code' } });
     result = { ok: true };
   });
   return result;

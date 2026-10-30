@@ -156,3 +156,13 @@ table.t{width:100%;border-collapse:collapse;font-size:.92rem}.t th{text-align:le
 #app:focus,#app:focus-visible{outline:none}
 .row>select.in,.row>input.in:not([type=checkbox]){width:auto;flex:1 1 170px;max-width:280px}
 .bar{max-width:56px}.bars{justify-content:flex-start}
+
+/* Indicador discreto de demo */
+.demo-bar-soft {
+  background: transparent !important;
+  color: var(--muted, #666) !important;
+  border-bottom: 1px solid var(--border, #e5e5e5);
+  padding: 4px 12px !important;
+  font-size: 12px !important;
+  text-align: center;
+}

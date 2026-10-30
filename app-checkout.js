@@ -195,15 +195,54 @@ const recentUsers = () => lsGet('mm.recentes', []);
 const rememberUser = (n) => lsSet('mm.recentes', [n, ...recentUsers().filter(x => x !== n)].slice(0, 6));
 const securityNote = () => h('div', { class: 'alert warn tiny' }, h('b', null, 'Autenticação de laboratório. '), 'Usuário e senha ficam só neste navegador (a senha é guardada com PBKDF2 + sal), mas quem controla o navegador pode ler ou alterar os dados. Isto NÃO é segurança adequada para produção: não use senhas reais.');
 function loginForm({ onDone, allowSignUp = true, next }) {
-  let mode = 'in'; const box = h('div');
-  const draw = () => { const u = inp({ ph: 'seu.usuario', ac: 'username', label: 'Usuário' }), p = inp({ type: 'password', ac: mode === 'in' ? 'current-password' : 'new-password', label: 'Senha' }), n = inp({ ac: 'name', label: 'Nome' }); const err = h('div', { class: 'alert err', hidden: true });
+  let mode = 'in'; let roleUp = 'customer'; const box = h('div');
+  const draw = () => {
+    const u = inp({ ph: 'seu.usuario', ac: 'username', label: 'Usuário' });
+    const p = inp({ type: 'password', inputmode: 'numeric', pattern: '[0-9]*', max_len: 4, ac: mode === 'in' ? 'current-password' : 'new-password', label: 'Senha (4 dígitos)', ph: '••••' });
+    const n = inp({ ac: 'name', label: 'Nome completo' });
+    const err = h('div', { class: 'alert err', hidden: true });
     const recent = recentUsers();
-    box.replaceChildren(allowSignUp && h('div', { class: 'tabs' }, h('button', { class: mode === 'in' ? 'on' : '', onclick: () => { mode = 'in'; draw(); } }, 'Entrar'), h('button', { class: mode === 'up' ? 'on' : '', onclick: () => { mode = 'up'; draw(); } }, 'Criar conta de cliente')),
-      h('form', { class: 'stack', style: { marginTop: '14px' }, onsubmit: async (ev) => { ev.preventDefault(); err.hidden = true; await busy(ev.submitter, async () => { try { const name = u.value.trim().toLowerCase(); if (mode === 'up') { if (!n.value.trim()) throw new Error('Informe seu nome.'); await api.signUp(name, p.value, n.value.trim()); } else await api.signIn(name, p.value); rememberUser(name); const usr = await waitUser(); await CartStore.mergeDown(); onDone(usr); } catch (x) { err.hidden = false; err.textContent = authErr(x); } }); } },
-        mode === 'up' && field('Nome', n), field('Usuário', u), field('Senha', p), err,
+    box.replaceChildren(
+      allowSignUp && h('div', { class: 'tabs' },
+        h('button', { class: mode === 'in' ? 'on' : '', onclick: () => { mode = 'in'; draw(); } }, 'Entrar'),
+        h('button', { class: mode === 'up' ? 'on' : '', onclick: () => { mode = 'up'; draw(); } }, 'Criar conta')),
+      h('form', { class: 'stack', style: { marginTop: '14px' }, onsubmit: async (ev) => {
+        ev.preventDefault(); err.hidden = true;
+        await busy(ev.submitter, async () => {
+          try {
+            const name = u.value.trim().toLowerCase();
+            const pin = String(p.value || '').trim();
+            if (!/^\d{4}$/.test(pin)) throw new Error('A senha deve ter exatamente 4 dígitos numéricos.');
+            if (mode === 'up') {
+              if (!n.value.trim()) throw new Error('Informe seu nome.');
+              if (roleUp === 'market') {
+                await api.call('publicSignUpMarket', { username: name, password: pin, name: n.value.trim() });
+                await api.signIn(name, pin);
+              } else {
+                await api.signUp(name, pin, n.value.trim());
+              }
+            } else {
+              await api.signIn(name, pin);
+            }
+            rememberUser(name);
+            const usr = await waitUser();
+            await CartStore.mergeDown();
+            onDone(usr);
+          } catch (x) { err.hidden = false; err.textContent = authErr(x); }
+        });
+      } },
+        mode === 'up' && field('Nome', n),
+        mode === 'up' && h('div', { class: 'field' }, h('label', { class: 'f' }, 'Tipo de conta'),
+          h('div', { class: 'row' },
+            h('label', { class: 'row' }, h('input', { type: 'radio', name: 'roleUp', checked: roleUp === 'customer', onchange: () => { roleUp = 'customer'; } }), ' Cliente'),
+            h('label', { class: 'row' }, h('input', { type: 'radio', name: 'roleUp', checked: roleUp === 'market', onchange: () => { roleUp = 'market'; } }), ' Mercado'))),
+        field('Usuário', u), field('Senha (PIN de 4 dígitos)', p), err,
         mode === 'in' && recent.length > 0 && h('div', { class: 'row tiny' }, h('span', { class: 'muted' }, 'Usados neste navegador:'), recent.map(r => h('button', { type: 'button', class: 'btn ghost sm', onclick: () => { u.value = r; p.focus(); } }, r))),
         h('button', { class: 'btn block', type: 'submit' }, mode === 'in' ? 'Entrar' : 'Criar conta')),
-      h('p', { class: 'tiny muted' }, 'Sem e-mail e sem confirmação: só usuário e senha simples. Você pode navegar sem conta; ela só é necessária para pagar.'), securityNote()); }; draw();
+      h('p', { class: 'tiny muted' }, 'Sem e-mail. Use um usuário e um PIN de 4 dígitos. O perfil (cliente, mercado, admin…) é identificado automaticamente no login.'),
+      securityNote());
+  };
+  draw();
   return box;
 }
 route(/^\/entrar$/, async (ctx) => {
@@ -216,11 +255,26 @@ route(/^\/entrar$/, async (ctx) => {
 });
 route(/^\/configurar$/, async () => {
   if (APP.hasAdmin) { go('/'); return h('div'); }
-  const u = inp({ ph: 'admin', label: 'Usuário do administrador' }), nm = inp({ label: 'Nome' }), p = inp({ type: 'password', ac: 'new-password', label: 'Senha' }), p2 = inp({ type: 'password', ac: 'new-password', label: 'Repita a senha' }); const err = h('div', { class: 'alert err', hidden: true });
+  // Pré-preenche conta administrativa de demonstração (Jean Sipiano / 3003)
+  const u = inp({ ph: 'jeansipiano', value: 'jeansipiano', label: 'Usuário do administrador' });
+  const nm = inp({ value: 'Jean Sipiano', label: 'Nome' });
+  const p = inp({ type: 'password', inputmode: 'numeric', max_len: 4, ac: 'new-password', label: 'Senha (PIN 4 dígitos)', value: '3003' });
+  const err = h('div', { class: 'alert err', hidden: true });
   return h('div', { class: 'stack', style: { maxWidth: '520px', margin: '20px auto' } }, h('div', { class: 'card stack' }, h('h1', null, 'Bem-vindo ao Meu Mercado Teste'),
-    h('p', null, 'Este é um simulador local: não há servidor, e-mail ou pagamento real. Tudo começa vazio. O primeiro passo é criar o administrador inicial. Depois disso esta tela é bloqueada e novas contas são criadas dentro da Administração.'),
-    h('form', { class: 'stack', onsubmit: async (e) => { e.preventDefault(); err.hidden = true; await busy(e.submitter, async () => { try { if (p.value !== p2.value) throw new Error('As senhas não conferem.'); await APP.auth.createFirstAdmin({ username: u.value, name: nm.value, password: p.value }); APP.hasAdmin = true; rememberUser(u.value.trim().toLowerCase()); toast('Administrador criado', 'ok'); go('/admin'); } catch (x) { err.hidden = false; err.textContent = errMsg(x); } }); } },
-      field('Usuário (3 a 30 letras minúsculas, números, ponto, hífen ou sublinhado)', u), field('Nome', nm), field('Senha (mínimo 4 caracteres)', p), field('Repita a senha', p2), err, h('button', { class: 'btn block', type: 'submit' }, 'Criar administrador e começar')),
+    h('p', null, 'Simulador local (dados neste navegador). Crie o administrador inicial. Depois, novas contas são criadas na Administração ou pelo cadastro público (cliente/mercado).'),
+    h('div', { class: 'alert' }, 'Conta sugerida de teste: usuário ', h('b', null, 'jeansipiano'), ' · PIN ', h('b', null, '3003'), '. Você pode alterar antes de criar.'),
+    h('form', { class: 'stack', onsubmit: async (e) => { e.preventDefault(); err.hidden = true; await busy(e.submitter, async () => { try {
+      const pin = String(p.value || '').trim();
+      if (!/^\d{4}$/.test(pin)) throw new Error('A senha deve ter exatamente 4 dígitos.');
+      await APP.auth.createFirstAdmin({ username: u.value, name: nm.value, password: pin });
+      APP.hasAdmin = true;
+      rememberUser(u.value.trim().toLowerCase());
+      // categorias padrão
+      try { await api.call('adminSeedDefaultCategories', {}); } catch (_) {}
+      toast('Administrador criado', 'ok');
+      go('/admin');
+    } catch (x) { err.hidden = false; err.textContent = errMsg(x); } }); } },
+      field('Usuário', u), field('Nome', nm), field('Senha (PIN de 4 dígitos)', p), err, h('button', { class: 'btn block', type: 'submit' }, 'Criar administrador e começar')),
     securityNote()),
     h('div', { class: 'card flat stack' }, h('b', null, 'Já tem um backup?'), h('p', { class: 'tiny' }, 'Se você exportou dados antes, pode restaurá-los em vez de começar do zero.'), h('button', { class: 'btn sec', onclick: () => openRestoreFromFile({ fromSetup: true }) }, 'Restaurar de um arquivo de backup…')));
 });

@@ -1,7 +1,8 @@
 /* Meu Mercado Teste — inicialização de dados
  * Local (IndexedDB) por padrão; se firebase-config.js estiver ativo, usa Firestore compartilhado.
+ * MM já é declarado em app-core.js — só atualiza a versão (evita "Identifier already declared").
  */
-const MM = { version: '1.1.0-firebase' };
+MM.version = '1.1.0-firebase';
 const APP = { ready: false, mode: 'local' };
 const SESSION = { user: null };
 const api = {};

@@ -1,0 +1,10 @@
+{
+  "name": "meu-mercado-teste",
+  "version": "1.0.0-teste",
+  "private": true,
+  "description": "Simulador local do Meu Mercado (sem Firebase, sem serviços externos). Só testes automatizados usam Node; o app roda direto no navegador.",
+  "scripts": {
+    "test": "node --test tests.js tests-store.js tests-backend.js tests-backup.js",
+    "serve": "python3 -m http.server 8080"
+  }
+}

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Meu Mercado Teste — simulador local</title>
+<meta name="description" content="Simulador local do Meu Mercado: tudo roda no seu navegador, sem servidor e sem pagamentos reais.">
+<meta name="theme-color" content="#1F9D55">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Meu Mercado Teste">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#app">Ir para o conteúdo</a>
+<div id="sim-bar" class="demo-bar" hidden></div>
+<header class="top" id="top"></header>
+<main id="app" tabindex="-1" aria-live="polite"></main>
+<nav class="bottom mob" id="bottom" aria-label="Navegação principal"></nav>
+<div id="toasts" aria-live="assertive"></div>
+<div id="modal-root"></div>
+<noscript><div style="padding:24px">O Meu Mercado precisa de JavaScript para funcionar.</div></noscript>
+<script src="mm-store.js"></script>
+<script src="mm-idb.js"></script>
+<script src="mm-auth.js"></script>
+<script src="mm-pay.js"></script>
+<script src="business-rules.js"></script>
+<script src="mm-backend.js"></script>
+<script src="mm-api.js"></script>
+<script src="mm-backup.js"></script>
+<script src="app-core.js"></script>
+<script src="app-data.js"></script>
+<script src="app-shell.js"></script>
+<script src="app-customer.js"></script>
+<script src="app-checkout.js"></script>
+<script src="app-market.js"></script>
+<script src="app-admin.js"></script>
+<script src="app-admin2.js"></script>
+<script src="app-boot.js"></script>
+</body>
+</html>

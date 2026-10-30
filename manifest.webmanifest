@@ -1,0 +1,19 @@
+{
+  "name": "Meu Mercado Teste — simulador local",
+  "short_name": "MM Teste",
+  "description": "Simulador local do Meu Mercado. Dados apenas neste navegador; pagamentos fictícios.",
+  "id": "./",
+  "start_url": "./index.html?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F6FBF4",
+  "theme_color": "#1F9D55",
+  "lang": "pt-BR",
+  "categories": ["shopping", "food"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

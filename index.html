@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Meu Mercado Teste — simulador local</title>
-<meta name="description" content="Simulador local do Meu Mercado: tudo roda no seu navegador, sem servidor e sem pagamentos reais.">
+<title>Meu Mercado Teste</title>
+<meta name="description" content="Marketplace de supermercados Meu Mercado — teste local ou Firebase compartilhado.">
 <meta name="theme-color" content="#1F9D55">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Meu Mercado Teste">
+<meta name="apple-mobile-web-app-title" content="Meu Mercado">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -24,6 +24,15 @@
 <div id="toasts" aria-live="assertive"></div>
 <div id="modal-root"></div>
 <noscript><div style="padding:24px">O Meu Mercado precisa de JavaScript para funcionar.</div></noscript>
+
+<!-- Firebase SDK (só usado se firebase-config.js existir e FIREBASE_ENABLED=true) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<!-- Config: copie firebase-config.example.js → firebase-config.js (não quebra se ausente) -->
+<script src="firebase-config.js" onerror="console.info('[Meu Mercado] Sem firebase-config.js — modo local.')"></script>
+<script src="mm-firebase.js"></script>
+
 <script src="mm-store.js"></script>
 <script src="mm-idb.js"></script>
 <script src="mm-auth.js"></script>

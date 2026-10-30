@@ -163,10 +163,12 @@ function renderShell(area) {
 function renderDemoBar() {
   const el = document.getElementById('sim-bar');
   if (!el) return;
-  // Indicador discreto de ambiente de demonstração (sem faixa amarela grande)
   el.hidden = false;
   el.className = 'demo-bar demo-bar-soft';
-  el.replaceChildren(h('span', { class: 'tiny muted' }, 'Ambiente de demonstração — dados locais neste navegador · pagamentos fictícios'));
+  const mode = (typeof APP !== 'undefined' && APP.mode === 'firebase')
+    ? 'Firebase (dados compartilhados entre dispositivos)'
+    : 'local neste navegador';
+  el.replaceChildren(h('span', { class: 'tiny muted' }, 'Demonstração · ' + mode + ' · pagamentos fictícios'));
 }
 
 /* ───────────────────────── Notificações ───────────────────────── */

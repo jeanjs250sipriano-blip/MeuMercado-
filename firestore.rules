@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Coleção única do Meu Mercado Teste (paths lógicos dentro de cada doc)
+    match /mm_docs/{docId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

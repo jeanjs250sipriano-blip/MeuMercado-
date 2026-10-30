@@ -97,8 +97,99 @@ function openListingEditor(l, mid, s, done) {
 const HK = { price: 'preço', allocated: 'alocado', active: 'ativo', promo: 'promoção', lowStockAt: 'alerta' };
 const fmtH = (k, v) => v == null ? '—' : k === 'price' ? brl(v) : k === 'promo' ? (v ? promoTag({ promo: v }) || 'promo' : '—') : k === 'active' ? (v ? 'sim' : 'não') : String(v);
 function openNewListing(mid, s, done) {
-  openModal((m) => { const tabs = h('div', { class: 'tabs' }); const body = h('div', { class: 'stack', style: { marginTop: '12px' } }); let tab = 'global';
-    const draw = () => { tabs.replaceChildren(...[['global', 'Do catálogo global'], ['local', 'Produto local / combo']].map(([k, t]) => h('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; draw(); } }, t))); body.replaceChildren(tab === 'global' ? globalTab() : localTab()); };
+  openModal((m) => { const tabs = h('div', { class: 'tabs' }); const body = h('div', { class: 'stack', style: { marginTop: '12px' } }); let tab = 'off';
+    const draw = () => { tabs.replaceChildren(...[['off', 'Open Food Facts'], ['global', 'Do catálogo global'], ['local', 'Produto local / combo']].map(([k, t]) => h('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; draw(); } }, t))); body.replaceChildren(tab === 'off' ? offTab() : tab === 'global' ? globalTab() : localTab()); };
+    const parseQty = (q) => {
+      if (!q) return { size: null, unit: '' };
+      const m = String(q).trim().toLowerCase().replace(',', '.').match(/^([\d.]+)\s*(kg|g|ml|l|un|unidade|unidades)?/);
+      if (!m) return { size: null, unit: '' };
+      let unit = (m[2] || '').replace(/^unidades?$/, 'un');
+      if (!unit) unit = '';
+      return { size: parseFloat(m[1]) || null, unit };
+    };
+    const offTab = () => {
+      const q = inp({ ph: 'Nome do produto (ex: Arroz 5kg) ou código de barras EAN' });
+      const res = h('div', { class: 'stack' });
+      const price = inp({ ph: 'Preço R$', mode: 'decimal' });
+      const qty = inp({ type: 'number', ph: 'Qtd. alocada', min: 0 });
+      const cat = sel([['', 'Categoria…'], ...S.cats.map(c => [c.id, (c.parentId ? '— ' : '') + c.name])], '');
+      let selected = null;
+      const formBox = h('div', { class: 'stack' });
+      const showForm = (p) => {
+        selected = p;
+        const pq = parseQty(p.quantity);
+        formBox.replaceChildren(
+          h('div', { class: 'card flat row', style: { gap: '12px', alignItems: 'center' } },
+            p.image_front_thumb_url || p.image_url ? h('img', { src: p.image_front_thumb_url || p.image_url, alt: '', style: { width: '56px', height: '56px', objectFit: 'contain', borderRadius: '6px', background: '#f5f5f5' } }) : h('div', { style: { width: '56px', height: '56px', background: '#eee', borderRadius: '6px' } }),
+            h('div', { class: 'grow' }, h('b', null, p.product_name || 'Sem nome'), h('div', { class: 'tiny muted' }, [p.brands, p.quantity, p.code].filter(Boolean).join(' · ')))
+          ),
+          h('div', { class: 'alert ok' }, 'Dados preenchidos automaticamente. Informe apenas preço, estoque e categoria.'),
+          h('div', { class: 'grid g2' }, field('Seu preço (R$)', price), field('Quantidade para vender', qty)),
+          field('Categoria', cat),
+          h('button', { class: 'btn', onclick: (e) => busy(e.currentTarget, async () => {
+            const pr = parseMoney(price.value);
+            if (!(pr > 0)) throw new Error('Informe o preço.');
+            if (!cat.value) throw new Error('Selecione a categoria.');
+            const unit = pq.unit || 'un';
+            await api.call('marketUpsertListing', {
+              marketId: mid,
+              name: (p.product_name || 'Produto').trim().slice(0, 160),
+              brand: (p.brands || '').split(',')[0].trim().slice(0, 80) || null,
+              barcode: p.code ? String(p.code).replace(/\D/g, '') || null : null,
+              size: pq.size,
+              unit,
+              categoryId: cat.value,
+              price: pr,
+              allocated: parseInt(qty.value) || 0,
+              active: (parseInt(qty.value) || 0) > 0,
+              imageUrl: p.image_url || p.image_front_small_url || p.image_front_thumb_url || null,
+              kind: 'product'
+            });
+            toast('Produto cadastrado via Open Food Facts', 'ok');
+            m.close(); done && done();
+          }) }, 'Cadastrar no meu mercado')
+        );
+      };
+      const search = debounce(async () => {
+        const term = (q.value || '').trim();
+        if (term.length < 2) { res.replaceChildren(h('p', { class: 'muted' }, 'Digite nome ou código de barras (mín. 2 caracteres).')); formBox.replaceChildren(); return; }
+        res.replaceChildren(h('p', { class: 'muted' }, 'Buscando na Open Food Facts Brasil…'));
+        formBox.replaceChildren();
+        try {
+          const isBarcode = /^\d{8,14}$/.test(term.replace(/\D/g, '')) && term.replace(/\D/g, '').length >= 8;
+          let products = [];
+          if (isBarcode) {
+            const code = term.replace(/\D/g, '');
+            const r = await fetch(`https://br.openfoodfacts.org/api/v2/product/${code}.json?fields=code,product_name,brands,quantity,image_front_thumb_url,image_front_small_url,image_url`, { headers: { 'User-Agent': 'MeuMercadoTeste/1.0 (simulador local)' } });
+            const data = await r.json();
+            if (data.status === 1 && data.product) products = [data.product];
+          } else {
+            const url = `https://br.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(term)}&search_simple=1&action=process&json=1&page_size=12&fields=code,product_name,brands,quantity,image_front_thumb_url,image_front_small_url,image_url`;
+            const r = await fetch(url, { headers: { 'User-Agent': 'MeuMercadoTeste/1.0 (simulador local)' } });
+            const data = await r.json();
+            products = data.products || [];
+          }
+          if (!products.length) {
+            res.replaceChildren(h('p', { class: 'muted' }, 'Nenhum produto encontrado. Tente outro termo ou cadastre como produto local.'));
+            return;
+          }
+          res.replaceChildren(...products.map(p => h('div', { class: 'card flat row between', style: { cursor: 'pointer', gap: '10px' }, onclick: () => showForm(p) },
+            h('div', { class: 'row', style: { gap: '10px', flex: 1 } },
+              (p.image_front_thumb_url || p.image_url) ? h('img', { src: p.image_front_thumb_url || p.image_url, alt: '', style: { width: '48px', height: '48px', objectFit: 'contain', borderRadius: '6px', background: '#f5f5f5', flexShrink: 0 }, loading: 'lazy' }) : h('div', { style: { width: '48px', height: '48px', background: '#eee', borderRadius: '6px', flexShrink: 0 } }),
+              h('div', null, h('b', null, p.product_name || 'Sem nome'), h('div', { class: 'tiny muted' }, [p.brands, p.quantity, p.code].filter(Boolean).join(' · ')))
+            ),
+            h('button', { class: 'btn sm', type: 'button', onclick: (ev) => { ev.stopPropagation(); showForm(p); } }, 'Selecionar')
+          )));
+        } catch (err) {
+          res.replaceChildren(h('p', { class: 'muted' }, 'Falha na busca: ' + (err.message || 'rede indisponível') + '. Você pode cadastrar manualmente na aba Produto local.'));
+        }
+      }, 400);
+      q.addEventListener('input', search);
+      return h('div', { class: 'stack' },
+        h('div', { class: 'alert' }, 'Busca na base pública Open Food Facts Brasil. Selecione o produto para preencher nome, marca e imagem automaticamente. Preço e estoque são definidos por você.'),
+        q, res, formBox
+      );
+    };
     const globalTab = () => { const q = inp({ ph: 'Buscar por nome, marca ou código de barras' }); const res = h('div', { class: 'stack' }); let all = null; const price = inp({ ph: 'Preço R$', mode: 'decimal' }); const qty = inp({ type: 'number', ph: 'Qtd. alocada', min: 0 });
       const search = debounce(async () => { if (!all) all = await api.col('globalProducts', { where: [['active', '==', true]], limit: 800 }); const t = R.normText(q.value); const rows = all.filter(g => !t || R.normText([g.name, g.brand, g.barcode].join(' ')).includes(t)).slice(0, 12); res.replaceChildren(...(rows.length ? rows.map(g => h('div', { class: 'card flat row between' }, h('div', null, h('b', null, g.name), h('div', { class: 'tiny muted' }, [g.brand, g.size && g.unit ? g.size + ' ' + g.unit : null, g.barcode].filter(Boolean).join(' · '))), h('button', { class: 'btn sm', onclick: (e) => busy(e.currentTarget, async () => { const p = parseMoney(price.value); if (!(p > 0)) throw new Error('Informe o preço antes.'); await api.call('marketUpsertListing', { marketId: mid, globalProductId: g.id, price: p, allocated: parseInt(qty.value) || 0, active: (parseInt(qty.value) || 0) > 0 }); toast('Produto vinculado', 'ok'); m.close(); done && done(); }) }, 'Vincular'))) : [h('p', { class: 'muted' }, 'Nada encontrado. Cadastre como produto local (a equipe da plataforma revisa depois).')])); }, 300);
       q.addEventListener('input', search); search(); return h('div', { class: 'stack' }, q, h('div', { class: 'grid g2' }, field('Seu preço (R$)', price), field('Quantidade para vender na plataforma', qty)), res); };
@@ -106,6 +197,7 @@ function openNewListing(mid, s, done) {
       return h('div', { class: 'stack' }, h('div', { class: 'alert' }, 'Produtos locais não alteram o catálogo global e ficam marcados para revisão da plataforma. Códigos de barras, preços e quantidades nunca são inventados.'), field('Nome', f.name), h('div', { class: 'grid g2' }, field('Marca', f.brand), field('Código de barras', f.barcode)), h('div', { class: 'grid g2' }, field('Tamanho/peso/volume', f.size), field('Unidade', f.unit)), field('Categoria', f.cat), h('div', { class: 'grid g2' }, field('Preço (R$)', f.price), field('Qtd. alocada', f.qty)), h('label', { class: 'row' }, combo, ' É um combo/kit (preço e quantidade próprios)'), field('Descrição', desc), h('button', { class: 'btn', onclick: (e) => busy(e.currentTarget, async () => { const p = parseMoney(f.price.value); if (!f.name.value.trim() || !f.unit.value || !f.cat.value || !(p > 0)) throw new Error('Preencha nome, unidade, categoria e preço.'); await api.call('marketUpsertListing', { marketId: mid, name: f.name.value.trim(), brand: f.brand.value.trim() || null, barcode: f.barcode.value.trim() || null, size: f.size.value ? Number(f.size.value.replace(',', '.')) : null, unit: f.unit.value, categoryId: f.cat.value, price: p, allocated: parseInt(f.qty.value) || 0, active: (parseInt(f.qty.value) || 0) > 0, description: desc.value.trim() || null, kind: combo.checked ? 'combo' : 'product' }); toast('Produto cadastrado', 'ok'); m.close(); done && done(); }) }, 'Cadastrar')); };
     draw(); return h('div', null, tabs, body); }, { title: 'Novo produto', wide: true });
 }
+
 routeA("market", /^\/painel\/produtos$/, async () => {
   if (!can(SESSION.user, 'products.read')) return mpanel('produtos', noPerm()); const { mid, s } = await mctx(); const catById = mapById(S.cats); let rows = []; const body = h('tbody'); const st = { q: '', f: 'all' }; const count = h('span', { class: 'muted' });
   const draw = () => { const t = R.normText(st.q); const arr = rows.filter(l => (!t || R.normText([l.name, l.brand, l.barcode].join(' ')).includes(t)) && ({ all: true, active: l.active, inactive: !l.active, promo: !!promoTag(l), low: l.active && R.availableQty(l) > 0 && R.availableQty(l) <= lowOf(l, s), out: R.availableQty(l) <= 0 }[st.f])).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')); count.textContent = `${arr.length} de ${rows.length}`;

@@ -90,3 +90,16 @@ async function initData() {
 let sweepBusy = false;
 async function runSweep() { if (sweepBusy || !APP.backend) return; sweepBusy = true; try { await APP.backend.call('runMaintenance', {}, {}); } catch (e) { console.warn('manutenção', e); } finally { sweepBusy = false; } }
 function maintenanceLoop() { runSweep(); setInterval(runSweep, 30000); document.addEventListener('visibilitychange', () => { if (!document.hidden) runSweep(); }); }
+
+// Garante acesso global (GitHub Pages / service worker / ordem de scripts)
+if (typeof window !== 'undefined') {
+  window.initData = initData;
+  window.APP = APP;
+  window.SESSION = SESSION;
+  window.api = api;
+  window.onAuth = onAuth;
+  window.MM = MM;
+  window.runSweep = runSweep;
+  window.maintenanceLoop = maintenanceLoop;
+  window.hydrateImg = hydrateImg;
+}

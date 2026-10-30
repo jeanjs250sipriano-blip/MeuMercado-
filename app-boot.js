@@ -16,11 +16,36 @@ function setupPWA() {
 
 /* ───────────────────────── BOOT ───────────────────────── */
 async function boot() {
-  try { await initData(); APP.hasAdmin = await APP.auth.hasAdmin(); }
+  try {
+    const init = typeof initData === 'function' ? initData : (typeof window !== 'undefined' && window.initData);
+    if (typeof init !== 'function') {
+      throw new Error('app-data.js não carregou (initData ausente). Confira se app-data.js está na mesma pasta do index.html e limpe o cache / service worker.');
+    }
+    await init();
+    APP.hasAdmin = await APP.auth.hasAdmin();
+  }
   catch (e) {
     console.error(e);
-    $('#sim-bar').hidden = true;
-    $('#app').replaceChildren(h('div', { class: 'card stack center', style: { maxWidth: '560px', margin: '40px auto' } }, h('h2', null, 'Não foi possível iniciar o simulador'), h('p', null, (e && e.message) || 'Erro desconhecido ao abrir o armazenamento local.'), h('button', { class: 'btn', onclick: () => location.reload() }, 'Tentar novamente')));
+    const bar = document.getElementById('sim-bar'); if (bar) bar.hidden = true;
+    const app = document.getElementById('app');
+    const msg = (e && e.message) || 'Erro desconhecido';
+    if (app) app.replaceChildren(h('div', { class: 'card stack center', style: { maxWidth: '560px', margin: '40px auto' } },
+      h('h2', null, 'Não foi possível iniciar o simulador'),
+      h('p', null, msg),
+      h('p', { class: 'tiny muted' }, 'Abra no navegador: SEU_SITE/app-data.js — se der 404, o arquivo não está no GitHub Pages.'),
+      h('button', { class: 'btn', onclick: async () => {
+        try {
+          if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map(r => r.unregister()));
+          }
+          if (window.caches) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+          }
+        } catch (_) {}
+        location.reload(true);
+      } }, 'Limpar cache e tentar de novo')));
     return;
   }
   setupPWA();

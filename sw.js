@@ -3,12 +3,12 @@
  * para abrir offline. Os DADOS ficam no IndexedDB e nunca passam pelo service worker.
  * Não há chamadas a serviços externos. Caminhos relativos (funciona em subpasta do GitHub Pages).
  */
-const VERSION = 'mmt-v1.0.0';
+const VERSION = 'mmt-v1.1.0-fb';
 const SHELL = `shell-${VERSION}`;
 const SHELL_FILES = [
   './', './index.html', './styles.css', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png',
   './mm-store.js', './mm-idb.js', './mm-auth.js', './mm-pay.js', './business-rules.js', './mm-backend.js', './mm-api.js', './mm-backup.js',
-  './app-core.js', './app-data.js', './app-shell.js', './app-customer.js', './app-checkout.js', './app-market.js', './app-admin.js', './app-admin2.js', './app-boot.js'
+  './mm-firebase.js', './app-core.js', './app-data.js', './app-shell.js', './app-customer.js', './app-checkout.js', './app-market.js', './app-admin.js', './app-admin2.js', './app-boot.js'
 ];
 
 self.addEventListener('install', (event) => {

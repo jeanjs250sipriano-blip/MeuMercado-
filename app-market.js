@@ -103,6 +103,107 @@ function openListingEditor(l, mid, s, done) {
 }
 const HK = { price: 'preço', allocated: 'alocado', active: 'ativo', promo: 'promoção', lowStockAt: 'alerta' };
 const fmtH = (k, v) => v == null ? '—' : k === 'price' ? brl(v) : k === 'promo' ? (v ? promoTag({ promo: v }) || 'promo' : '—') : k === 'active' ? (v ? 'sim' : 'não') : String(v);
+
+/** Lê código de barras pela câmera e devolve o GTIN/EAN (só dígitos). */
+function openBarcodeScanner({ onCode, title }) {
+  const video = h('video', { playsinline: 'true', muted: true, autoplay: true, style: { width: '100%', maxHeight: '55vh', background: '#000', borderRadius: '12px', objectFit: 'cover' } });
+  const status = h('p', { class: 'tiny muted center' }, 'Aponte a câmera para o código de barras…');
+  const hint = h('p', { class: 'tiny muted' }, 'Boa iluminação ajuda. Aceita EAN-13, EAN-8 e UPC.');
+  let stream = null, raf = 0, closed = false, html5 = null;
+
+  const stop = () => {
+    closed = true;
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    if (html5) { try { html5.stop().catch(() => {}); } catch (_) {} html5 = null; }
+    if (stream) { stream.getTracks().forEach(tr => tr.stop()); stream = null; }
+    try { video.srcObject = null; } catch (_) {}
+  };
+
+  const finish = (code) => {
+    if (closed) return;
+    const digits = String(code || '').replace(/\D/g, '');
+    if (digits.length < 8) return;
+    stop();
+    try { md.close(); } catch (_) {}
+    onCode && onCode(digits);
+  };
+
+  const md = openModal(() => h('div', { class: 'stack' },
+    video,
+    status,
+    hint,
+    h('button', { class: 'btn ghost block', type: 'button', onclick: () => { stop(); md.close(); } }, 'Cancelar')
+  ), { title: title || 'Ler código de barras', wide: true, onClose: stop });
+
+  (async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      status.textContent = 'Este navegador não permite câmera. Digite o código manualmente.';
+      status.className = 'alert err';
+      return;
+    }
+    // 1) API nativa BarcodeDetector (Chrome Android etc.)
+    if (typeof BarcodeDetector !== 'undefined') {
+      try {
+        const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'] });
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        video.srcObject = stream;
+        await video.play();
+        status.textContent = 'Câmera ativa — enquadre o código…';
+        const tick = async () => {
+          if (closed) return;
+          try {
+            if (video.readyState >= 2) {
+              const codes = await detector.detect(video);
+              if (codes && codes.length && codes[0].rawValue) {
+                finish(codes[0].rawValue);
+                return;
+              }
+            }
+          } catch (_) {}
+          raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return;
+      } catch (e) {
+        console.warn('BarcodeDetector', e);
+        if (stream) { stream.getTracks().forEach(tr => tr.stop()); stream = null; }
+      }
+    }
+
+    // 2) Fallback Html5Qrcode (CDN)
+    try {
+      if (!window.Html5Qrcode) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+          s.onload = resolve;
+          s.onerror = () => reject(new Error('Falha ao carregar leitor.'));
+          document.head.appendChild(s);
+        });
+      }
+      const boxId = 'mm-qr-' + Date.now();
+      const box = h('div', { id: boxId, style: { width: '100%' } });
+      video.replaceWith(box);
+      status.textContent = 'Iniciando câmera…';
+      html5 = new Html5Qrcode(boxId);
+      await html5.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 280, height: 160 }, aspectRatio: 1.777 },
+        (decoded) => finish(decoded),
+        () => {}
+      );
+      status.textContent = 'Câmera ativa — enquadre o código…';
+    } catch (e) {
+      status.textContent = (e && e.message) || 'Não foi possível abrir a câmera. Permita o acesso nas configurações do navegador.';
+      status.className = 'alert err';
+    }
+  })();
+}
+
 function openNewListing(mid, s, done) {
   openModal((m) => { const tabs = h('div', { class: 'tabs' }); const body = h('div', { class: 'stack', style: { marginTop: '12px' } }); let tab = 'off';
     const draw = () => { tabs.replaceChildren(...[['off', 'Open Food Facts'], ['global', 'Do catálogo global'], ['local', 'Produto local / combo']].map(([k, t]) => h('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; draw(); } }, t))); body.replaceChildren(tab === 'off' ? offTab() : tab === 'global' ? globalTab() : localTab()); };
@@ -388,10 +489,20 @@ function openNewListing(mid, s, done) {
       }, 450);
 
       q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
+      const scanBtn = h('button', {
+        class: 'btn ghost', type: 'button', title: 'Ler código de barras com a câmera',
+        onclick: () => openBarcodeScanner({
+          onCode: (code) => {
+            q.value = code;
+            toast('Código ' + code, 'ok');
+            search();
+          }
+        })
+      }, '📷 Código');
       // Busca só ao pressionar Enter ou clicar em Buscar (evita spam na API)
       return h('div', { class: 'stack' },
-        h('div', { class: 'alert' }, 'Pesquisa no Catálogo Global e nas bases Open Food / Products / Beauty / Pet Facts. Pressione Enter ou Buscar. A categoria é sugerida; você define preço e estoque.'),
-        h('div', { class: 'row' }, h('div', { class: 'grow' }, q), h('button', { class: 'btn', type: 'button', onclick: () => search() }, 'Buscar')),
+        h('div', { class: 'alert' }, 'Pesquise por nome ou código. Use 📷 Código para ler o código de barras com a câmera — busca automática no Open Food Facts. A categoria é sugerida; você define preço e estoque.'),
+        h('div', { class: 'row' }, h('div', { class: 'grow' }, q), scanBtn, h('button', { class: 'btn', type: 'button', onclick: () => search() }, 'Buscar')),
         res, formBox
       );
     };

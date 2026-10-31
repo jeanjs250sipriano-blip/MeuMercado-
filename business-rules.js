@@ -305,13 +305,21 @@ const normText = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f
  * Um mercado atende se o endereço casar com QUALQUER critério configurado. Sem critério configurado => NÃO atende.
  */
 function coversAddress(area, addr) {
-  if (!area || !addr) return false;
+  if (!area) return false;
+  // Mercado aberto para a cidade inteira (cadastro público / teste)
+  if (area.open === true) return true;
+  if (!addr) return false;
   const cep = String(addr.cep || '').replace(/\D/g, '');
   if (Array.isArray(area.ceps) && cep && area.ceps.some(p => cep.startsWith(String(p).replace(/\D/g, '')) && String(p).replace(/\D/g, '').length >= 3)) return true;
   if (Array.isArray(area.districts) && addr.district && area.districts.map(normText).includes(normText(addr.district))) return true;
   if (area.center && Number.isFinite(area.radiusKm) && Number.isFinite(addr.lat) && Number.isFinite(addr.lng)) {
     return haversineKm(area.center, { lat: addr.lat, lng: addr.lng }) <= area.radiusKm;
   }
+  // Sem restrição de CEP/bairro/raio configurada → cobre (útil em demonstração)
+  const noCeps = !area.ceps || !area.ceps.length;
+  const noDist = !area.districts || !area.districts.length;
+  const noGeo = !area.center || !Number.isFinite(area.radiusKm);
+  if (noCeps && noDist && noGeo) return true;
   return false;
 }
 

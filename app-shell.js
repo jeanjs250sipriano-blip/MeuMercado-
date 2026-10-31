@@ -110,6 +110,19 @@ let navToken = 0;
 async function navigate() {
   runCleanups(); const tk = ++navToken; const { path, q } = parseHash(); const app = $('#app');
   if (!APP.hasAdmin && path !== '/configurar') { if (location.hash !== '#/configurar') { location.hash = '/configurar'; return; } }
+  // Sem usuário: qualquer área logada volta direto para a tela de entrada
+  const u0 = SESSION.user;
+  if (!u0 && path !== '/entrar' && path !== '/configurar' && path !== '/seja-parceiro') {
+    const needsAuth = path.startsWith('/admin') || path.startsWith('/painel') || path === '/conta' || path.startsWith('/pedido') || path.startsWith('/listas') || path.startsWith('/checkout');
+    // / e /m/ e /carrinho podem ser públicos; painel/admin sempre exigem login
+    if (path.startsWith('/admin') || path.startsWith('/painel') || path === '/conta') {
+      location.hash = '/entrar'; return;
+    }
+  }
+  // Com usuário: se está em /entrar, manda para a home do perfil
+  if (u0 && (path === '/entrar' || path === '/configurar')) {
+    location.hash = (typeof homeFor === 'function' ? homeFor(u0) : '/'); return;
+  }
   let hit = null; for (const r of routes) { const m = path.match(r.re); if (m) { hit = { r, params: m.slice(1).map(decodeURIComponent) }; break; } }
   const area = hit ? hit.r.area || 'customer' : 'customer';
   renderShell(area);
@@ -126,7 +139,7 @@ function accessGate(kind, path) {
   return h('div', { class: 'card stack center', style: { maxWidth: '480px', margin: '40px auto' } }, h('div', { class: 'big', style: { fontSize: '2.4rem' } }, '🔒'),
     h('h2', null, kind === 'market' ? 'Painel do mercado' : 'Administração'),
     u ? h('p', null, 'Sua conta não tem acesso a esta área. Peça a um administrador que conceda a permissão.') : h('p', null, 'Entre com sua conta de equipe para continuar.'),
-    u ? h('button', { class: 'btn ghost', onclick: () => api.signOut() }, 'Sair e trocar de conta') : h('a', { class: 'btn', href: href('/entrar?next=' + encodeURIComponent(path)) }, 'Entrar'));
+    u ? h('button', { class: 'btn ghost', onclick: () => api.signOut().then(() => go('/entrar')) }, 'Sair e trocar de conta') : h('a', { class: 'btn', href: href('/entrar?next=' + encodeURIComponent(path)) }, 'Entrar'));
 }
 
 /* ───────────────────────── Shell (topo e navegação) ───────────────────────── */
@@ -156,7 +169,7 @@ function renderShell(area) {
     const switchLinks = h('div', { class: 'areas', style: { padding: 0, flex: 1, justifyContent: 'flex-end' } },
       isStaffOf(u, 'market') && h('a', { href: href('/painel'), class: area === 'market' ? 'on' : '' }, 'Painel do mercado'),
       isStaffOf(u, 'admin') && h('a', { href: href('/admin'), class: area === 'admin' ? 'on' : '' }, 'Administração'), h('a', { href: href('/') }, 'Ver loja'));
-    top.replaceChildren(h('div', { class: 'top-in' }, brand, switchLinks, bell, u && h('button', { class: 'icon-btn', 'aria-label': 'Sair', title: 'Sair', onclick: () => api.signOut() }, icon('logout'))));
+    top.replaceChildren(h('div', { class: 'top-in' }, brand, switchLinks, bell, u && h('button', { class: 'icon-btn', 'aria-label': 'Sair', title: 'Sair', onclick: () => api.signOut().then(() => go('/entrar')) }, icon('logout'))));
   }
   updateBadges();
 }

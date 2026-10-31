@@ -304,20 +304,37 @@ exports.publicSignUpMarket = onCall(OPTS, async (req) => {
   const username = str(d.username, 40, 'usuário').toLowerCase();
   const password = String(d.password || '');
   const name = str(d.name, 120, 'nome');
+  const cityName = optStr(d.city, 80) || optStr(d.cityName, 80) || 'Cidade';
   if (!/^\d{4}$/.test(password)) fail('invalid-argument', 'A senha deve ter exatamente 4 dígitos.');
   const perms = R.MARKET_PERMS || ['orders.read','orders.picking','orders.dispatch','orders.deliver','products.read','products.write','products.import','stock.write','settings.write','finance.read','promotions.write','staff.manage','chat.use'];
   const marketId = slug(name) + '-' + crypto.randomBytes(2).toString('hex');
+  // Garante cidade (cria se não existir)
+  const cityId = slug(cityName) || 'cidade';
+  const cityRef = db.collection('cities').doc(cityId);
+  const citySnap = await cityRef.get();
+  if (!citySnap.exists) {
+    await cityRef.set({ name: cityName, active: true, createdAt: now(), updatedAt: now() });
+  }
   const { account } = await auth.createAccount({ username, name, password, role: 'market_staff', marketId, perms, mustChangePassword: false }, 'self');
+  // Já nasce ativo e aceitando pedidos para aparecer na vitrine do cliente
   await db.collection('markets').doc(marketId).set({
-    name, tradeName: name, status: 'awaiting_setup', acceptingOrders: false,
+    name, tradeName: name, status: 'active', acceptingOrders: true,
     ratingSum: 0, ratingCount: 0, ratingAvg: 0, createdAt: now(),
-    ownerUid: account.uid, cityId: null
+    ownerUid: account.uid, cityId, cityName
   });
   await db.collection('markets').doc(marketId).collection('staff').doc(account.uid).set({
     name: account.name, email: account.email || username + '@local', perms, preset: 'manager', active: true, createdAt: now(), createdBy: account.uid
   });
-  await audit(null, { actor: account.uid, actorRole: 'market_staff', action: 'market.publicSignup', target: `markets/${marketId}`, after: { name } });
-  return { ok: true, marketId, username: account.username };
+  // Área de entrega ampla (sem CEP restrito) — cliente vê o mercado mesmo sem endereço fino
+  await db.collection('markets').doc(marketId).collection('public').doc('settings').set({
+    etaMinutes: 60,
+    minOrderCents: 0,
+    deliveryFeeCents: 0,
+    deliveryArea: { open: true, cityId, cityName, ceps: [], districts: [], radiusKm: 50 },
+    updatedAt: now()
+  }, { merge: true });
+  await audit(null, { actor: account.uid, actorRole: 'market_staff', action: 'market.publicSignup', target: `markets/${marketId}`, after: { name, cityId } });
+  return { ok: true, marketId, username: account.username, cityId };
 });
 
 exports.marketRequestSignup = onCall(OPTS, async (req) => {
@@ -557,7 +574,12 @@ exports.marketUpdateSettings = onCall(OPTS, async (req) => {
   await sref.set(out, { merge: true });
   const mPatch = {};
   if (typeof d.acceptingOrders === 'boolean') mPatch.acceptingOrders = d.acceptingOrders; // pausar não remove o mercado da vitrine
-  if (d.profile) { if (d.profile.name) mPatch.name = str(d.profile.name, 120, 'nome'); if (d.profile.description !== undefined) mPatch.description = optStr(d.profile.description, 500); if (d.profile.logoUrl !== undefined) mPatch.logoUrl = optStr(d.profile.logoUrl, 500); if (d.profile.coverUrl !== undefined) mPatch.coverUrl = optStr(d.profile.coverUrl, 500); if (d.profile.address) mPatch.addressText = optStr(d.profile.address, 200); }
+  // goLive: mercado criado por cadastro público sai de "aguardando" e aparece para clientes
+  if (d.goLive === true) {
+    mPatch.status = 'active';
+    mPatch.acceptingOrders = true;
+  }
+  if (d.profile) { if (d.profile.name) mPatch.name = str(d.profile.name, 120, 'nome'); if (d.profile.description !== undefined) mPatch.description = optStr(d.profile.description, 500); if (d.profile.logoUrl !== undefined) mPatch.logoUrl = optStr(d.profile.logoUrl, 500); if (d.profile.coverUrl !== undefined) mPatch.coverUrl = optStr(d.profile.coverUrl, 500); if (d.profile.address) mPatch.addressText = optStr(d.profile.address, 200); if (d.profile.cityId) mPatch.cityId = str(d.profile.cityId, 80, 'cidade'); if (d.profile.cityName) mPatch.cityName = optStr(d.profile.cityName, 80); }
   if (Object.keys(mPatch).length) await ref.set(mPatch, { merge: true });
   if (d.notify) { // contatos/avisos privados (WhatsApp é opcional e só funciona após configurar o provedor)
     await ref.collection('staff').doc('_settings').set({ whatsappNumber: optStr(d.notify.whatsappNumber, 20), whatsappTypes: Array.isArray(d.notify.whatsappTypes) ? d.notify.whatsappTypes.slice(0, 20) : [], whatsappEnabled: false, updatedAt: now() }, { merge: true });

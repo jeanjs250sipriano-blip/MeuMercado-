@@ -17,6 +17,13 @@ const isLate = (o) => ACTIVE_ST.includes(o.status) && (o.delivery?.etaAt || Infi
 /* ───────────────────────── Painel inicial ───────────────────────── */
 routeA("market", /^\/painel$/, async () => {
   const { mid, m, s } = await mctx(); const root = h('div', { class: 'stack' }); let period = 7; let orders = [], listings = [];
+  // Mercados criados pelo cadastro público: ativa na vitrine se ainda estiver "aguardando"
+  if (m && m.status && m.status !== 'active' && can(SESSION.user, 'settings.write')) {
+    try {
+      await api.call('marketUpdateSettings', { marketId: mid, goLive: true, settings: { deliveryArea: { open: true } }, acceptingOrders: true });
+      m.status = 'active'; m.acceptingOrders = true;
+    } catch (e) { console.warn('goLive', e); }
+  }
   const [ls, cp] = await Promise.all([api.col(`markets/${mid}/listings`, { limit: 1000 }).catch(() => []), Promise.resolve()]); listings = ls;
   const canOrders = can(SESSION.user, 'orders.read'), canFin = can(SESSION.user, 'finance.read');
   const draw = () => {

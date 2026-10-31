@@ -99,10 +99,10 @@ routeA("admin", /^\/admin\/categorias$/, async () => {
       location.hash = location.hash; // re-render
     });
   };
-  // Se ainda não há categorias, carrega as padrão automaticamente
+  // Sempre aplica as 12 oficiais e remove o restante
   try {
-    const existing = await api.col('categories', { limit: 5 });
-    if (!existing.length) await api.call('adminSeedDefaultCategories', {});
+    await api.call('adminSeedDefaultCategories', {});
+    S.cats = await api.col('categories', { where: [['active', '==', true]] });
   } catch (_) { /* sem permissão ou offline — botão manual abaixo */ }
   S.cleanups.push(api.watchCol('categories', {}, (r) => box.replaceChildren(...r.sort((a, b) => (a.order ?? 99) - (b.order ?? 99)).map(c => h('div', { class: 'card flat row between' }, h('div', null, h('b', null, catLabel(c)), h('div', { class: 'tiny muted' }, c.id)), h('div', { class: 'row' }, h('span', { class: 'badge ' + (c.active === false ? 'g' : '') }, c.active === false ? 'Oculta' : 'Visível'), h('button', { class: 'btn sm ghost', onclick: () => edit(c) }, 'Editar'))))), (e) => box.replaceChildren(errorBox(e))));
   S.cleanups.push(api.watchCol('categoryRequests', { where: [['status', '==', 'pending']] }, (r) => reqs.replaceChildren(...(r.length ? r.map(q => h('div', { class: 'card flat row between' }, h('div', null, h('b', null, q.name), h('div', { class: 'tiny muted' }, 'Sugerida por ' + (q.marketId || '—'))), h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: (e) => busy(e.currentTarget, () => api.call('adminResolveCategoryRequest', { requestId: q.id, approve: true })) }, 'Aprovar'), h('button', { class: 'btn sm ghost', onclick: (e) => busy(e.currentTarget, () => api.call('adminResolveCategoryRequest', { requestId: q.id, approve: false })) }, 'Recusar')))) : [h('p', { class: 'muted' }, 'Nenhuma sugestão pendente.')])), () => {}));
@@ -111,7 +111,7 @@ routeA("admin", /^\/admin\/categorias$/, async () => {
       h('div', { class: 'row' },
         h('button', { class: 'btn ghost', onclick: (e) => seedDefaults(e.currentTarget) }, 'Substituir pelas 12 categorias'),
         h('button', { class: 'btn', onclick: () => edit() }, icon('plus'), 'Nova'))),
-    h('p', { class: 'muted tiny' }, 'A estrutura é única para toda a plataforma; mercados apenas sugerem. Use “Substituir pelas 12 categorias” (Açougue, Padaria, Hortifrúti… — remove as antigas). Arroz e Feijão, Bebidas, Hortifruti, etc.'),
+    h('p', { class: 'muted tiny' }, 'A estrutura é única para toda a plataforma; mercados apenas sugerem. Ao abrir esta página, o sistema deixa somente as 12 categorias: Açougue, Padaria, Hortifrúti, Frios e Laticínios, Mercearia, Bebidas, Congelados, Higiene Pessoal, Limpeza, Utilidades e Descartáveis, Pet Shop, Saudáveis.'),
     box, h('h3', null, 'Sugestões dos mercados'), reqs);
 });
 

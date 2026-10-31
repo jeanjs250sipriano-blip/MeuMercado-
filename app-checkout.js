@@ -200,6 +200,7 @@ function loginForm({ onDone, allowSignUp = true, next }) {
     const u = inp({ ph: 'seu.usuario', ac: 'username', label: 'Usuário' });
     const p = inp({ type: 'password', inputmode: 'numeric', pattern: '[0-9]*', max_len: 4, ac: mode === 'in' ? 'current-password' : 'new-password', label: 'Senha (4 dígitos)', ph: '••••' });
     const n = inp({ ac: 'name', label: 'Nome completo' });
+    const city = inp({ ac: 'address-level2', label: 'Cidade do mercado', ph: 'Ex.: São Paulo' });
     const err = h('div', { class: 'alert err', hidden: true });
     const recent = recentUsers();
     box.replaceChildren(
@@ -216,7 +217,8 @@ function loginForm({ onDone, allowSignUp = true, next }) {
             if (mode === 'up') {
               if (!n.value.trim()) throw new Error('Informe seu nome.');
               if (roleUp === 'market') {
-                await api.call('publicSignUpMarket', { username: name, password: pin, name: n.value.trim() });
+                if (!city.value.trim()) throw new Error('Informe a cidade do mercado.');
+                await api.call('publicSignUpMarket', { username: name, password: pin, name: n.value.trim(), city: city.value.trim() });
                 await api.signIn(name, pin);
               } else {
                 await api.signUp(name, pin, n.value.trim());
@@ -234,8 +236,9 @@ function loginForm({ onDone, allowSignUp = true, next }) {
         mode === 'up' && field('Nome', n),
         mode === 'up' && h('div', { class: 'field' }, h('label', { class: 'f' }, 'Tipo de conta'),
           h('div', { class: 'row' },
-            h('label', { class: 'row' }, h('input', { type: 'radio', name: 'roleUp', checked: roleUp === 'customer', onchange: () => { roleUp = 'customer'; } }), ' Cliente'),
-            h('label', { class: 'row' }, h('input', { type: 'radio', name: 'roleUp', checked: roleUp === 'market', onchange: () => { roleUp = 'market'; } }), ' Mercado'))),
+            h('label', { class: 'row' }, h('input', { type: 'radio', name: 'roleUp', checked: roleUp === 'customer', onchange: () => { roleUp = 'customer'; draw(); } }), ' Cliente'),
+            h('label', { class: 'row' }, h('input', { type: 'radio', name: 'roleUp', checked: roleUp === 'market', onchange: () => { roleUp = 'market'; draw(); } }), ' Mercado'))),
+        mode === 'up' && roleUp === 'market' && field('Cidade do mercado', city),
         field('Usuário', u), field('Senha (PIN de 4 dígitos)', p), err,
         mode === 'in' && recent.length > 0 && h('div', { class: 'row tiny' }, h('span', { class: 'muted' }, 'Usados neste navegador:'), recent.map(r => h('button', { type: 'button', class: 'btn ghost sm', onclick: () => { u.value = r; p.focus(); } }, r))),
         h('button', { class: 'btn block', type: 'submit' }, mode === 'in' ? 'Entrar' : 'Criar conta')),
@@ -281,7 +284,7 @@ route(/^\/configurar$/, async () => {
 function openSwitchAccount() {
   openModal((m) => { const u = SESSION.user; return h('div', { class: 'stack' }, u && h('div', { class: 'card flat' }, h('div', { class: 'tiny muted' }, 'Perfil ativo'), h('b', null, `${u.name} (${u.username})`), h('div', null, ROLE_LABEL[u.role] || u.role)),
     h('p', { class: 'tiny muted' }, 'Entrar com outra conta troca o perfil ativo. Carrinhos ficam guardados por conta.'),
-    loginForm({ allowSignUp: false, onDone: (usr) => { m.close(); go(homeFor(usr)); } }), u && h('button', { class: 'btn ghost', onclick: () => { m.close(); api.signOut().then(() => go('/')); } }, icon('logout'), 'Apenas sair')); }, { title: 'Trocar de conta' });
+    loginForm({ allowSignUp: false, onDone: (usr) => { m.close(); go(homeFor(usr)); } }), u && h('button', { class: 'btn ghost', onclick: () => { m.close(); api.signOut().then(() => go('/entrar')); } }, icon('logout'), 'Apenas sair')); }, { title: 'Trocar de conta' });
 }
 route(/^\/conta$/, async () => {
   const gate = needCustomer('Sua conta'); if (gate) return gate; const u = SESSION.user; const prof = (await api.doc('users/' + u.uid).catch(() => null)) || {}; const root = h('div', { class: 'stack' });
@@ -292,7 +295,7 @@ route(/^\/conta$/, async () => {
   const tg = (k, label) => h('label', { class: 'row' }, h('input', { type: 'checkbox', checked: prefs[k], onchange: (e) => { prefs[k] = e.target.checked; } }), label);
   root.append(h('h1', null, 'Minha conta'), h('form', { class: 'card stack', onsubmit: async (e) => { e.preventDefault(); await busy(e.submitter, async () => { await api.update('users/' + u.uid, { name: name.value.trim().slice(0, 120) || u.name, phone: phone.value.trim().slice(0, 30), prefs }); toast('Dados salvos', 'ok'); }); } }, h('h3', { style: { margin: 0 } }, 'Dados cadastrais'), field('Nome', name), field('E-mail', h('input', { class: 'in', value: u.email, disabled: true })), field('Telefone / contato', phone), h('h4', null, 'Notificações'), tg('orderUpdates', 'Avisos sobre meus pedidos'), tg('promos', 'Ofertas e novidades'), h('button', { class: 'btn', type: 'submit' }, 'Salvar')),
     h('section', { class: 'card stack' }, h('div', { class: 'row between' }, h('h3', { style: { margin: 0 } }, 'Endereços'), h('button', { class: 'btn sm', onclick: () => openModal((mm) => addressForm({}, async (a) => { await api.add(`users/${u.uid}/addresses`, cleanAddr(a)); mm.close(); }, { saveLabel: 'Salvar endereço', geo: true }), { title: 'Novo endereço' }) }, icon('plus'), 'Adicionar')), addrBox),
-    h('div', { class: 'grid g2' }, h('a', { class: 'btn ghost', href: href('/pedidos') }, 'Histórico de pedidos'), h('a', { class: 'btn ghost', href: href('/listas') }, 'Minhas listas'), h('a', { class: 'btn ghost', href: href('/suporte') }, 'Suporte'), h('button', { class: 'btn ghost', onclick: () => api.signOut().then(() => go('/')) }, icon('logout'), 'Sair')), installHint());
+    h('div', { class: 'grid g2' }, h('a', { class: 'btn ghost', href: href('/pedidos') }, 'Histórico de pedidos'), h('a', { class: 'btn ghost', href: href('/listas') }, 'Minhas listas'), h('a', { class: 'btn ghost', href: href('/suporte') }, 'Suporte'), h('button', { class: 'btn ghost', onclick: () => api.signOut().then(() => go('/entrar')) }, icon('logout'), 'Sair')), installHint());
   return root;
 });
 route(/^\/suporte$/, async (ctx) => {

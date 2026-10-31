@@ -91,7 +91,12 @@ routeA("admin", /^\/admin\/categorias$/, async () => {
     await busy(btn, async () => {
       const r = await api.call('adminSeedDefaultCategories', {});
       S.cats = await api.col('categories', { where: [['active', '==', true]] });
-      toast(r.created ? `${r.created} categorias criadas (${r.skipped} já existiam)` : 'Categorias padrão já estavam cadastradas', 'ok');
+      const parts = [];
+      if (r.removed) parts.push(`${r.removed} removidas`);
+      if (r.created) parts.push(`${r.created} criadas`);
+      if (r.updated) parts.push(`${r.updated} atualizadas`);
+      toast(parts.length ? `Categorias: ${parts.join(', ')}` : '12 categorias aplicadas', 'ok');
+      location.hash = location.hash; // re-render
     });
   };
   // Se ainda não há categorias, carrega as padrão automaticamente
@@ -104,9 +109,9 @@ routeA("admin", /^\/admin\/categorias$/, async () => {
   return apanel('categorias',
     h('div', { class: 'row between' }, h('h1', { style: { margin: 0 } }, 'Categorias globais'),
       h('div', { class: 'row' },
-        h('button', { class: 'btn ghost', onclick: (e) => seedDefaults(e.currentTarget) }, 'Carregar padrões'),
+        h('button', { class: 'btn ghost', onclick: (e) => seedDefaults(e.currentTarget) }, 'Substituir pelas 12 categorias'),
         h('button', { class: 'btn', onclick: () => edit() }, icon('plus'), 'Nova'))),
-    h('p', { class: 'muted tiny' }, 'A estrutura é única para toda a plataforma; mercados apenas sugerem. Use “Carregar padrões” para criar de uma vez: Mercearia, Arroz e Feijão, Bebidas, Hortifruti, etc.'),
+    h('p', { class: 'muted tiny' }, 'A estrutura é única para toda a plataforma; mercados apenas sugerem. Use “Substituir pelas 12 categorias” (Açougue, Padaria, Hortifrúti… — remove as antigas). Arroz e Feijão, Bebidas, Hortifruti, etc.'),
     box, h('h3', null, 'Sugestões dos mercados'), reqs);
 });
 

@@ -105,9 +105,8 @@ exports.adminUpsertCategory = onCall(OPTS, async (req) => {
   return { id };
 });
 
-/** Categorias padrão do supermercado (ids estáveis alinhados a CAT_EMOJI no front). Só cria as que ainda não existem. */
+/** As 12 categorias do supermercado — seed SUBSTITUI tudo (remove as antigas). */
 const DEFAULT_CATEGORIES = [
-  // 12 categorias principais do supermercado (sem subcategorias)
   { id: 'acougue', name: 'Açougue', icon: '🥩', order: 10 },
   { id: 'padaria', name: 'Padaria', icon: '🍞', order: 20 },
   { id: 'hortifruti', name: 'Hortifrúti', icon: '🥬', order: 30 },
@@ -120,24 +119,53 @@ const DEFAULT_CATEGORIES = [
   { id: 'utilidades', name: 'Utilidades e Descartáveis', icon: '🧻', order: 100 },
   { id: 'pet', name: 'Pet Shop', icon: '🐾', order: 110 },
   { id: 'saudaveis', name: 'Saudáveis / Produtos Especiais', icon: '🥗', order: 120 },
-]
-
+];
 
 exports.adminSeedDefaultCategories = onCall(OPTS, async (req) => {
   const c = needPlatform(req, 'categories.write');
-  let created = 0, skipped = 0;
-  // Pais primeiro, depois filhos
-  const sorted = [...DEFAULT_CATEGORIES].sort((a, b) => (a.parentId ? 1 : 0) - (b.parentId ? 1 : 0) || a.order - b.order);
-  for (const cat of sorted) {
+  const keep = new Set(DEFAULT_CATEGORIES.map((x) => x.id));
+  let removed = 0, created = 0, updated = 0;
+
+  // 1) Remove TODAS as categorias que não estão na lista das 12
+  const existing = await db.collection('categories').get();
+  for (const doc of existing.docs) {
+    if (!keep.has(doc.id)) {
+      await doc.ref.delete();
+      removed++;
+    }
+  }
+
+  // 2) Cria ou atualiza exatamente as 12
+  for (const cat of DEFAULT_CATEGORIES) {
     const ref = db.collection('categories').doc(cat.id);
     const cur = await ref.get();
-    if (cur.exists) { skipped++; continue; }
-    const doc = { name: cat.name, parentId: cat.parentId || null, order: cat.order, active: true, icon: cat.icon, emoji: cat.icon, createdAt: now(), updatedAt: now() };
-    await ref.set(doc);
-    created++;
+    const doc = {
+      name: cat.name,
+      parentId: null,
+      order: cat.order,
+      active: true,
+      icon: cat.icon,
+      emoji: cat.icon,
+      updatedAt: now(),
+    };
+    if (cur.exists) {
+      await ref.update(doc);
+      updated++;
+    } else {
+      doc.createdAt = now();
+      await ref.set(doc);
+      created++;
+    }
   }
-  await audit(null, { actor: c.uid, actorRole: c.role, action: 'category.seedDefaults', target: 'categories', after: { created, skipped } });
-  return { created, skipped, total: DEFAULT_CATEGORIES.length };
+
+  await audit(null, {
+    actor: c.uid,
+    actorRole: c.role,
+    action: 'category.replaceDefaults',
+    target: 'categories',
+    after: { created, updated, removed, total: DEFAULT_CATEGORIES.length },
+  });
+  return { created, updated, removed, total: DEFAULT_CATEGORIES.length };
 });
 
 // Categorias nunca são excluídas: apenas desativadas, preservando produtos e histórico.

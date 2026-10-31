@@ -330,10 +330,23 @@ exports.publicSignUpMarket = onCall(OPTS, async (req) => {
     etaMinutes: 60,
     minOrderCents: 0,
     deliveryFeeCents: 0,
+    deliveryFee: 800, // R$ 8,00 em centavos (compat com quote)
+    minOrder: 0,
+    freeShippingAbove: null,
     deliveryArea: { open: true, cityId, cityName, ceps: [], districts: [], radiusKm: 50 },
     updatedAt: now()
   }, { merge: true });
-  await audit(null, { actor: account.uid, actorRole: 'market_staff', action: 'market.publicSignup', target: `markets/${marketId}`, after: { name, cityId } });
+  // Financeiro mínimo: comissão padrão 10% (admin pode alterar depois)
+  await db.collection('marketAdmin').doc(marketId).set({
+    commissionRate: 0.10,
+    ownerUid: account.uid,
+    ownerHistory: [],
+    legalName: null,
+    cnpj: null,
+    paymentAccountId: null,
+    createdAt: now()
+  }, { merge: true });
+  await audit(null, { actor: account.uid, actorRole: 'market_staff', action: 'market.publicSignup', target: `markets/${marketId}`, after: { name, cityId, commissionRate: 0.10 } });
   return { ok: true, marketId, username: account.username, cityId };
 });
 
@@ -578,6 +591,16 @@ exports.marketUpdateSettings = onCall(OPTS, async (req) => {
   if (d.goLive === true) {
     mPatch.status = 'active';
     mPatch.acceptingOrders = true;
+    const adminRef = db.collection('marketAdmin').doc(marketId);
+    const adminSnap = await adminRef.get();
+    if (!adminSnap.exists || adminSnap.data()?.commissionRate == null) {
+      await adminRef.set({
+        commissionRate: 0.10,
+        ownerUid: c.uid,
+        ownerHistory: [],
+        createdAt: now()
+      }, { merge: true });
+    }
   }
   if (d.profile) { if (d.profile.name) mPatch.name = str(d.profile.name, 120, 'nome'); if (d.profile.description !== undefined) mPatch.description = optStr(d.profile.description, 500); if (d.profile.logoUrl !== undefined) mPatch.logoUrl = optStr(d.profile.logoUrl, 500); if (d.profile.coverUrl !== undefined) mPatch.coverUrl = optStr(d.profile.coverUrl, 500); if (d.profile.address) mPatch.addressText = optStr(d.profile.address, 200); if (d.profile.cityId) mPatch.cityId = str(d.profile.cityId, 80, 'cidade'); if (d.profile.cityName) mPatch.cityName = optStr(d.profile.cityName, 80); }
   if (Object.keys(mPatch).length) await ref.set(mPatch, { merge: true });
@@ -933,7 +956,11 @@ exports.createCheckout = onCall({ ...OPTS, timeoutSeconds: 60 }, async (req) => 
   const { market, admin: a, settings } = await marketBundle(marketId);
   if (market.status !== 'active') fail('failed-precondition', 'Este mercado não está disponível.');
   if (market.acceptingOrders === false) fail('failed-precondition', 'Este mercado pausou novos pedidos temporariamente.');
-  if (a.commissionRate == null) fail('failed-precondition', 'Mercado sem configuração financeira completa.');
+  // Demo/cadastro público: se ainda não houver comissão, aplica 10% e grava
+  if (!a || a.commissionRate == null) {
+    await db.collection('marketAdmin').doc(marketId).set({ commissionRate: 0.10, updatedAt: now() }, { merge: true });
+    a = { ...(a || {}), commissionRate: 0.10 };
+  }
 
   // Endereço do cliente (leitura confiável, dono verificado) + cobertura
   const addrSnap = await db.collection('users').doc(c.uid).collection('addresses').doc(str(d.addressId, 100, 'endereço')).get();
